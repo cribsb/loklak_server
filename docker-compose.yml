@@ -1,5 +1,15 @@
-web:
-  name: "loklak"
-  build: .
-  ports:
-  - ":80"
+version: '2'
+
+services:
+         loklak:
+                build: .
+         ports:
+             - "80:80"
+         #Map volume-folder    
+         volumes:
+             - data:/loklak_server/data
+             
+#Create named volume             
+volumes:
+       data: 
+           external: false

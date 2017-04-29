@@ -31,6 +31,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 import javax.imageio.ImageIO;
 import javax.servlet.ServletException;
@@ -55,6 +56,7 @@ public class RemoteAccess {
     public static Map<String, Map<String, RemoteAccess>> history = new ConcurrentHashMap<String, Map<String, RemoteAccess>>();
     
     public static Query evaluate(final HttpServletRequest request) {
+        try{ request.setCharacterEncoding("UTF-8");} catch (UnsupportedEncodingException e){} // set character encoding before any request is made
         String path = request.getServletPath();
         Map<String, String> qm = getQueryMap(request.getQueryString());
         Query post = new Query(request);
@@ -66,8 +68,8 @@ public class RemoteAccess {
         String peername = qm == null ? request.getParameter("peername") : qm.get("peername");
         if (peername == null || peername.length() > 132) peername = "anonymous";
         final String remoteHost = post.getClientHost();
-        Map<String, RemoteAccess> hmap = history.get(post.track.getClassName());
-        if (hmap == null) {hmap = new ConcurrentHashMap<>(); history.put(post.track.getClassName(), hmap);}
+        Map<String, RemoteAccess> hmap = history.get(request.getServletPath());
+        if (hmap == null) {hmap = new ConcurrentHashMap<>(); history.put(request.getServletPath(), hmap);}
         if (httpport == null || httpsport == null) {
             // if port configuration is omitted, just update the value if it exist
             RemoteAccess ra = hmap.get(remoteHost);
@@ -134,8 +136,9 @@ public class RemoteAccess {
     public String getPeername() {
         return this.peername;
     }
-    
+
     private static Set<String> localhostNames = new HashSet<>();
+    private static Set<Pattern> localhostReferrer = new HashSet<>();
     static {
         localhostNames.add("0:0:0:0:0:0:0:1");
         localhostNames.add("fe80:0:0:0:0:0:0:1%1");
@@ -148,13 +151,21 @@ public class RemoteAccess {
         try {for (InetAddress a: InetAddress.getAllByName("localhost")) {localhostNames.add(a.getHostAddress()); localhostNames.add(a.getHostName()); localhostNames.add(a.getCanonicalHostName());}} catch (UnknownHostException e) {}
         //System.out.println(localhostNames);
     }
-    
+
     public static void addLocalhost(String h) {
         localhostNames.add(h);
     }
     
-    public static boolean isLocalhost(String host) {
-        return localhostNames.contains(host);
+    public static void addReferrer(Pattern p) {
+        localhostReferrer.add(p);
+    }
+    
+    public static boolean isLocalhost(String host, String referrer) {
+        if (localhostNames.contains(host)) return true;
+        for (Pattern p: localhostReferrer) {
+            if (p.matcher(referrer).find()) return true;
+        }
+        return false;
     }
 
     public static Map<String, String> getQueryMap(String query) {

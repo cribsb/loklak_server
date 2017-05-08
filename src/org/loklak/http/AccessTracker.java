@@ -40,7 +40,6 @@ public class AccessTracker extends Thread {
 
     private final static String START_DATE_KEY    = "start";
     private final static String FINISH_DATE_KEY   = "finish";
-    private final static String CLASS_KEY         = "class";
     private final static String CLIENT_KEY        = "host"; // host address of the client
     private final static String LOCALHOST_FLAG    = "local"; // boolean from isLocalhost
     private final static String COMMENT_KEY       = "comment"; // to write i.e. termination reason
@@ -140,7 +139,7 @@ public class AccessTracker extends Thread {
         private boolean isLocalhost;
         private boolean DoS_blackout, DoS_servicereduction;
         
-        public Track(String servlet, String clientHost) {
+        public Track(String servlet, String clientHost, String referrer) {
             this.clientHost = clientHost;
             long time = System.currentTimeMillis();
             Date lastDate = null;
@@ -150,9 +149,7 @@ public class AccessTracker extends Thread {
             this.accessTime = new Date(time);
             this.put(START_DATE_KEY, DateParser.iso8601MillisFormat.format(accessTime));
             this.put(CLIENT_KEY, clientHost);
-            int p = servlet.lastIndexOf('.');
-            this.put(CLASS_KEY, p < 0 ? servlet : servlet.substring(p + 1));
-            this.isLocalhost = RemoteAccess.isLocalhost(clientHost);
+            this.isLocalhost = RemoteAccess.isLocalhost(clientHost, referrer);
             this.put(LOCALHOST_FLAG, this.isLocalhost);
             AccessTracker.this.pendingQueue.put(accessTime, this);
         }
@@ -164,10 +161,6 @@ public class AccessTracker extends Thread {
             } catch (Throwable e) {
                 DAO.log("cannot parse \"" + serialized + "\"");
             } 
-        }
-        
-        public String getClassName() {
-            return (String) this.get(CLASS_KEY);
         }
         
         public Date getDate() {
@@ -224,8 +217,8 @@ public class AccessTracker extends Thread {
         }
     }
 
-    public Track startTracking(String servlet, String clientHost) {
-        return new Track(servlet, clientHost);
+    public Track startTracking(String servlet, String clientHost, String referrer) {
+        return new Track(servlet, clientHost, referrer);
     }
     
     

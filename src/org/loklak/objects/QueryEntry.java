@@ -67,7 +67,7 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
     
     protected String query;           // the query in the exact way as the user typed it in
     protected int query_length;       // the length in the query, number of characters
-    public SourceType source_type; // the (external) retrieval system where that query was submitted
+    public SourceType source_type;    // the (external) retrieval system where that query was submitted
     protected int timezoneOffset;     // the timezone offset of the user
     protected Date query_first;       // the date when this query was submitted by the user the first time
     protected Date query_last;        // the date when this query was submitted by the user the last time
@@ -112,14 +112,14 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
         this.query_length = (int) parseLong((Number) json.get("query_length"));
         String source_type_string = (String) json.get("source_type");
         if (source_type_string == null) source_type_string = SourceType.TWITTER.toString();
-        this.source_type = new SourceType(source_type_string);
+        this.source_type = SourceType.byName(source_type_string);
         this.timezoneOffset = (int) parseLong((Number) json.get("timezoneOffset"));
         Date now = new Date();
-        this.query_first = parseDate(json.get("query_first"), now);
-        this.query_last = parseDate(json.get("query_last"), now);
-        this.retrieval_last = parseDate(json.get("retrieval_last"), now);
-        this.retrieval_next = parseDate(json.get("retrieval_next"), now);
-        this.expected_next = parseDate(json.get("expected_next"), now);
+        this.query_first = json.has("query_first") ? parseDate(json.get("query_first"), now) : new Date();
+        this.query_last = json.has("query_last") ? parseDate(json.get("query_last"), now) : new Date();
+        this.retrieval_last = json.has("retrieval_last") ? parseDate(json.get("retrieval_last"), now) : new Date();
+        this.retrieval_next = json.has("retrieval_next") ? parseDate(json.get("retrieval_next"), now) : new Date();
+        this.expected_next = json.has("expected_next") ? parseDate(json.get("expected_next"), now) : new Date();
         this.query_count = (int) parseLong((Number) json.get("query_count"));
         this.retrieval_count = (int) parseLong((Number) json.get("retrieval_count"));
         this.message_period = parseLong((Number) json.get("message_period"));
@@ -256,7 +256,8 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
         emotion("classifier_emotion"),
         profanity("classifier_profanity"),
         language("classifier_language"),
-        pure("");
+        pure(""),
+        len25("text_length"), len50("text_length"), len75("text_length"), len100("text_length");
         protected String field_name;
         protected Pattern pattern;
         private Constraint(String field_name) {
@@ -391,8 +392,15 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
             if (tokens.constraints_positive.contains("pure") && (
                     message.getImages().size() != 0 ||
                     message.getMentions().length != 0 ||
-                    message.getLinks().length != 0
+                    message.getLinks().length != 0 ||
+                    message.getHashtags().length != 0
                )) continue;
+            
+            if (tokens.constraints_positive.contains("len25") && message.getTextLength() > 25) continue;
+            if (tokens.constraints_positive.contains("len50") && message.getTextLength() > 50) continue;
+            if (tokens.constraints_positive.contains("len75") && message.getTextLength() > 75) continue;
+            if (tokens.constraints_positive.contains("len100") && message.getTextLength() > 100) continue;
+            
             if (tokens.constraints_positive.contains("image") && message.getImages().size() == 0) continue;
             if (tokens.constraints_negative.contains("image") && message.getImages().size() != 0) continue;
             if (tokens.constraints_positive.contains("place") && message.getPlaceName().length() == 0) continue;
@@ -600,13 +608,29 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
             List<QueryBuilder> ops = new ArrayList<>();
             List<QueryBuilder> nops = new ArrayList<>();
             List<QueryBuilder> filters = new ArrayList<>();
-            for (String text: text_positive_match)  {
-                ops.add(QueryBuilders.constantScoreQuery(QueryBuilders.matchQuery("text", text)));
+            if (text_positive_match.size() == 1) {
+                BoolQueryBuilder disjunction = QueryBuilders.boolQuery();
+                disjunction.should(QueryBuilders.constantScoreQuery(QueryBuilders.termQuery("screen_name", text_positive_match.get(0))));
+                disjunction.should(QueryBuilders.constantScoreQuery(QueryBuilders.matchQuery("text", text_positive_match.get(0))));
+                disjunction.minimumNumberShouldMatch(1);
+                ops.add(disjunction);
+            } else {
+                for (String text: text_positive_match)  {
+                    ops.add(QueryBuilders.constantScoreQuery(QueryBuilders.matchQuery("text", text)));
+                }
             }
-            for (String text: text_negative_match) {
-                // negation of terms in disjunctions would cause to retrieve almost all documents
-                // this cannot be the requirement of the user. It may be valid in conjunctions, but not in disjunctions
-                nops.add(QueryBuilders.constantScoreQuery(QueryBuilders.matchQuery("text", text)));
+            if (text_negative_match.size() == 1) {
+                BoolQueryBuilder disjunction = QueryBuilders.boolQuery();
+                disjunction.should(QueryBuilders.constantScoreQuery(QueryBuilders.termQuery("screen_name", text_negative_match.get(0))));
+                disjunction.should(QueryBuilders.constantScoreQuery(QueryBuilders.matchQuery("text", text_negative_match.get(0))));
+                disjunction.minimumNumberShouldMatch(1);
+                ops.add(disjunction);
+            } else {
+                for (String text: text_negative_match) {
+                    // negation of terms in disjunctions would cause to retrieve almost all documents
+                    // this cannot be the requirement of the user. It may be valid in conjunctions, but not in disjunctions
+                    nops.add(QueryBuilders.constantScoreQuery(QueryBuilders.matchQuery("text", text)));
+                }
             }
             
             // apply modifiers
@@ -633,7 +657,24 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
                 nops.add(QueryBuilders.constantScoreQuery(QueryBuilders.existsQuery(Constraint.video.field_name)));
                 nops.add(QueryBuilders.constantScoreQuery(QueryBuilders.existsQuery(Constraint.link.field_name)));
                 nops.add(QueryBuilders.constantScoreQuery(QueryBuilders.existsQuery(Constraint.mention.field_name)));
-            }
+                nops.add(QueryBuilders.constantScoreQuery(QueryBuilders.existsQuery(Constraint.hashtag.field_name)));
+            };
+            if (constraints_positive.remove("len25")) {
+                nops.add(QueryBuilders.constantScoreQuery(QueryBuilders
+                        .rangeQuery(Constraint.len25.field_name).from(26).to(1000).includeLower(true).includeUpper(false)));
+            };
+            if (constraints_positive.remove("len50")) {
+                nops.add(QueryBuilders.constantScoreQuery(QueryBuilders
+                        .rangeQuery(Constraint.len50.field_name).from(51).to(1000).includeLower(true).includeUpper(false)));
+            };
+            if (constraints_positive.remove("len75")) {
+                nops.add(QueryBuilders.constantScoreQuery(QueryBuilders
+                        .rangeQuery(Constraint.len75.field_name).from(76).to(1000).includeLower(true).includeUpper(false)));
+            };
+            if (constraints_positive.remove("len100")) {
+                nops.add(QueryBuilders.constantScoreQuery(QueryBuilders
+                        .rangeQuery(Constraint.len100.field_name).from(101).to(1000).includeLower(true).includeUpper(false)));
+            };
             if (modifier.containsKey("from")) {
                 for (String screen_name: modifier.get("from")) {
                     if (screen_name.indexOf(',') < 0) {
@@ -674,7 +715,7 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
             if (modifier.containsKey("since")) try {
                 Calendar since = DateParser.parse(modifier.get("since").iterator().next(), timezoneOffset);
                 this.since = since.getTime();
-                RangeQueryBuilder rangeQuery = QueryBuilders.rangeQuery("created_at").from(this.since);
+                RangeQueryBuilder rangeQuery = QueryBuilders.rangeQuery(AbstractObjectEntry.CREATED_AT_FIELDNAME).from(this.since);
                 if (modifier.containsKey("until")) {
                     Calendar until = DateParser.parse(modifier.get("until").iterator().next(), timezoneOffset);
                     if (until.get(Calendar.HOUR) == 0 && until.get(Calendar.MINUTE) == 0) {
@@ -696,7 +737,7 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
                     until.add(Calendar.DATE, 1);
                 }
                 this.until = until.getTime();
-                RangeQueryBuilder rangeQuery = QueryBuilders.rangeQuery("created_at").to(this.until);
+                RangeQueryBuilder rangeQuery = QueryBuilders.rangeQuery(AbstractObjectEntry.CREATED_AT_FIELDNAME).to(this.until);
                 ops.add(rangeQuery);
             } catch (ParseException e) {}
 

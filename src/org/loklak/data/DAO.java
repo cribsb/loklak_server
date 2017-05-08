@@ -47,7 +47,6 @@ import org.eclipse.jetty.util.ConcurrentHashSet;
 
 import com.github.fge.jackson.JsonLoader;
 import com.google.common.base.Charsets;
-import com.google.common.io.Files;
 
 import org.eclipse.jetty.util.log.Log;
 import org.elasticsearch.cluster.health.ClusterHealthStatus;
@@ -65,6 +64,7 @@ import org.loklak.harvester.TwitterScraper;
 import org.loklak.http.AccessTracker;
 import org.loklak.http.ClientConnection;
 import org.loklak.http.RemoteAccess;
+import org.loklak.objects.AbstractObjectEntry;
 import org.loklak.objects.AccountEntry;
 import org.loklak.objects.ImportProfileEntry;
 import org.loklak.objects.MessageEntry;
@@ -73,9 +73,9 @@ import org.loklak.objects.QueryEntry;
 import org.loklak.objects.ResultList;
 import org.loklak.objects.SourceType;
 import org.loklak.objects.Timeline;
+import org.loklak.objects.TimelineCache;
 import org.loklak.objects.UserEntry;
 import org.loklak.server.*;
-import org.loklak.susi.SusiMind;
 import org.loklak.tools.DateParser;
 import org.loklak.tools.OS;
 import org.loklak.tools.storage.*;
@@ -122,6 +122,7 @@ public class DAO {
     private static File external_data, assets, dictionaries;
     public static Settings public_settings, private_settings;
     private static Path message_dump_dir, account_dump_dir, import_profile_dump_dir;
+    public static Path push_cache_dir;
     public static JsonRepository message_dump;
     private static JsonRepository account_dump;
     private static JsonRepository import_profile_dump;
@@ -142,6 +143,7 @@ public class DAO {
     private static Map<String, String> config = new HashMap<>();
     public  static GeoNames geoNames = null;
     public static Peers peers = new Peers();
+    public static OutgoingMessageBuffer outgoingMessages = new OutgoingMessageBuffer();
     
     // AAA Schema for server usage
     public static JsonTray authentication;
@@ -151,9 +153,7 @@ public class DAO {
     public static JsonTray passwordreset;
     public static Map<String, Accounting> accounting_temporary = new HashMap<>();
     public static JsonFile login_keys;
-    
-    // built-in artificial intelligence
-    public static SusiMind susi;
+    public static TimelineCache timelineCache;
     
     public static enum IndexName {
     	messages_hour("messages.json"), messages_day("messages.json"), messages_week("messages.json"), messages, queries, users, accounts, import_profiles;
@@ -182,14 +182,6 @@ public class DAO {
         conf_dir = new File("conf");
         bin_dir = new File("bin");
         html_dir = new File("html");
-        
-        // wake up susi
-        File susiinitpath = new File(conf_dir, "susi");
-        File sudiwatchpath = new File(new File("data"), "susi");
-        susi = new SusiMind(susiinitpath, sudiwatchpath);
-        String susi_boilerplate_name = "susi_cognition_boilerplate.json";
-        File susi_boilerplate_file = new File(sudiwatchpath, susi_boilerplate_name);
-        if (!susi_boilerplate_file.exists()) Files.copy(new File(conf_dir, "susi/" + susi_boilerplate_name + ".example"), susi_boilerplate_file);
         
         // initialize public and private keys
 		public_settings = new Settings(new File("data/settings/public.settings.json"));
@@ -318,6 +310,9 @@ public class DAO {
         external_data = new File(datadir, "external");
         dictionaries = new File(external_data, "dictionaries");
         dictionaries.mkdirs();
+        
+        push_cache_dir = dataPath.resolve("pushcache");
+        push_cache_dir.toFile().mkdirs();
 
         // create message dump dir
         String message_dump_readme =
@@ -360,6 +355,8 @@ public class DAO {
         access = new AccessTracker(log_dump_dir.toFile(), ACCESS_DUMP_FILE_PREFIX, 60000, 3000);
         access.start(); // start monitor
 
+        timelineCache = new TimelineCache(60000);
+        
         import_profile_dump_dir = dataPath.resolve("import-profiles");
         import_profile_dump = new JsonRepository(import_profile_dump_dir.toFile(), IMPORT_PROFILE_FILE_PREFIX, null, JsonRepository.COMPRESSED_MODE, false, Runtime.getRuntime().availableProcessors());
 
@@ -550,6 +547,7 @@ public class DAO {
 
         // close the index
         elasticsearch_client.close();
+
         Log.getLog().info("closed DAO");
     }
     
@@ -587,6 +585,27 @@ public class DAO {
         }
     }
 
+    public static int getConfig(String key, int default_val) {
+        String value = config.get(key);
+        try {
+            return value == null ? default_val : Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            return default_val;
+        }
+    }
+/*
+    public static void setConfig(String key, String value) {
+        config.put(key, value);
+    }
+
+    public static void setConfig(String key, long value) {
+        setConfig(key, Long.toString(value));
+    }
+
+    public static void setConfig(String key, double value) {
+        setConfig(key, Double.toString(value));
+    }
+*/
     public static JsonNode getSchema(String key) throws IOException {
         File schema = new File(schema_dir, key);
         if (!schema.exists()) {
@@ -658,7 +677,7 @@ public class DAO {
              }
             
             // teach the classifier
-            Classifier.learnPhrase(mw.t.getText(Integer.MAX_VALUE, ""));
+            Classifier.learnPhrase(mw.t.getText());
         } catch (IOException e) {
         	Log.getLog().warn(e);
         }
@@ -672,8 +691,10 @@ public class DAO {
             if (mw.t == null) continue;
             if (mw.dump) dump.add(mw); else noDump.add(mw);
         }
-        writeMessageBulkNoDump(noDump);
-        return writeMessageBulkDump(dump);
+        Set<String> createdIDs = new HashSet<>();
+        createdIDs.addAll(writeMessageBulkNoDump(noDump));
+        createdIDs.addAll(writeMessageBulkDump(dump)); // does also do an writeMessageBulkNoDump internally
+        return createdIDs;
     }
 
     /**
@@ -696,7 +717,7 @@ public class DAO {
              }
                 
             // teach the classifier
-            Classifier.learnPhrase(mw.t.getText(Integer.MAX_VALUE, ""));
+            Classifier.learnPhrase(mw.t.getText());
         }
         ElasticsearchClient.BulkWriteResult result = null;
         try {
@@ -757,7 +778,7 @@ public class DAO {
              }
                 
             // teach the classifier
-            Classifier.learnPhrase(mw.t.getText(Integer.MAX_VALUE, ""));
+            Classifier.learnPhrase(mw.t.getText());
         } catch (IOException e) {
         	Log.getLog().warn(e);
         }
@@ -803,36 +824,64 @@ public class DAO {
         return true;
     }
     
+    private static long countLocalHourMessages(final long millis, boolean created_at) {
+        if (millis > 3600000L) return countLocalDayMessages(millis, created_at);
+        if (created_at && millis == 3600000L) return elasticsearch_client.count(IndexName.messages_hour.name());
+        return elasticsearch_client.count(
+                created_at ? IndexName.messages_hour.name() : IndexName.messages_week.name(),
+                created_at ? AbstractObjectEntry.CREATED_AT_FIELDNAME : AbstractObjectEntry.TIMESTAMP_FIELDNAME,
+                millis);
+    }
+    
+    private static long countLocalDayMessages(final long millis, boolean created_at) {
+        if (millis > 86400000L) return countLocalWeekMessages(millis, created_at);
+        if (created_at && millis == 86400000L) return elasticsearch_client.count(IndexName.messages_hour.name());
+        return elasticsearch_client.count(
+                created_at ? IndexName.messages_day.name() : IndexName.messages.name(),
+                created_at ? AbstractObjectEntry.CREATED_AT_FIELDNAME : AbstractObjectEntry.TIMESTAMP_FIELDNAME,
+                millis);
+    }
+    
+    private static long countLocalWeekMessages(final long millis, boolean created_at) {
+        if (millis > 604800000L) return countLocalMessages(millis, created_at);
+        if (created_at && millis == 604800000L) return elasticsearch_client.count(IndexName.messages_hour.name());
+        return elasticsearch_client.count(
+                created_at ? IndexName.messages_week.name() : IndexName.messages.name(),
+                created_at ? AbstractObjectEntry.CREATED_AT_FIELDNAME : AbstractObjectEntry.TIMESTAMP_FIELDNAME,
+                millis);
+    }
+
+    public static long countLocalMessages(final long millis, boolean created_at) {
+        if (millis == 0) return 0;
+        if (millis > 0) {
+            if (millis <= 3600000L) return countLocalHourMessages(millis, created_at);
+            if (millis <= 86400000L) return countLocalDayMessages(millis, created_at);
+            if (millis <= 604800000L) return countLocalWeekMessages(millis, created_at);
+        }
+        return elasticsearch_client.count(
+                IndexName.messages.name(),
+                created_at ? AbstractObjectEntry.CREATED_AT_FIELDNAME : AbstractObjectEntry.TIMESTAMP_FIELDNAME,
+                millis == Long.MAX_VALUE ? -1 : millis);
+    }
+    
+    public static long countLocalMessages() {
+        return elasticsearch_client.count(IndexName.messages.name(), AbstractObjectEntry.TIMESTAMP_FIELDNAME, -1);
+    }
+
     public static long countLocalMessages(String provider_hash) {
         return elasticsearch_client.countLocal(IndexName.messages.name(), provider_hash);
     }
-
-    public static long countLocalMessages(long millis) {
-        return elasticsearch_client.count(IndexName.messages.name(), "timestamp", millis);
-    }
-    
-    public static long countLocalHourMessages(long millis) {
-        return elasticsearch_client.count(IndexName.messages_hour.name(), "timestamp", millis);
-    }
-    
-    public static long countLocalDayMessages(long millis) {
-        return elasticsearch_client.count(IndexName.messages_day.name(), "timestamp", millis);
-    }
-    
-    public static long countLocalWeekMessages(long millis) {
-        return elasticsearch_client.count(IndexName.messages_week.name(), "timestamp", millis);
-    }
     
     public static long countLocalUsers() {
-        return elasticsearch_client.count(IndexName.users.name(), "timestamp", -1);
+        return elasticsearch_client.count(IndexName.users.name(), AbstractObjectEntry.TIMESTAMP_FIELDNAME, -1);
     }
 
     public static long countLocalQueries() {
-        return elasticsearch_client.count(IndexName.queries.name(), "timestamp", -1);
+        return elasticsearch_client.count(IndexName.queries.name(), AbstractObjectEntry.TIMESTAMP_FIELDNAME, -1);
     }
     
     public static long countLocalAccounts() {
-        return elasticsearch_client.count(IndexName.accounts.name(), "timestamp", -1);
+        return elasticsearch_client.count(IndexName.accounts.name(), AbstractObjectEntry.TIMESTAMP_FIELDNAME, -1);
     }
 
     public static MessageEntry readMessage(String id) throws IOException {
@@ -867,7 +916,7 @@ public class DAO {
     }
     
     public static int deleteOld(IndexName indexName, Date createDateLimit) {
-        RangeQueryBuilder rangeQuery = QueryBuilders.rangeQuery("created_at").to(createDateLimit);
+        RangeQueryBuilder rangeQuery = QueryBuilders.rangeQuery(AbstractObjectEntry.CREATED_AT_FIELDNAME).to(createDateLimit);
         return elasticsearch_client.deleteByQuery(indexName.name(), rangeQuery);
     }
     
@@ -885,31 +934,30 @@ public class DAO {
          * @param aggregationLimit - the maximum count of facet entities, not search results
          * @param aggregationFields - names of the aggregation fields. If no aggregation is wanted, pass no (zero) field(s)
          */
-        public SearchLocalMessages(final String q, Timeline.Order order_field, int timezoneOffset, int resultCount, int aggregationLimit, String... aggregationFields) {
+        public SearchLocalMessages(final String q, final Timeline.Order order_field, final int timezoneOffset, final int resultCount, final int aggregationLimit, final String... aggregationFields) {
             this.timeline = new Timeline(order_field);
             QueryEntry.ElasticsearchQuery sq = new QueryEntry.ElasticsearchQuery(q, timezoneOffset);
             long interval = sq.until.getTime() - sq.since.getTime();
             IndexName resultIndex;
-            boolean wholetime = aggregationFields.length > 0;
-            if (wholetime) {
+            if (aggregationFields.length > 0 && q.contains("since:")) {
                 if (q.contains("since:hour")) {
-                    this.query =  elasticsearch_client.query((resultIndex = IndexName.messages_hour).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, "created_at", aggregationLimit, aggregationFields);
+                    this.query =  elasticsearch_client.query((resultIndex = IndexName.messages_hour).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, AbstractObjectEntry.CREATED_AT_FIELDNAME, aggregationLimit, aggregationFields);
                 } else if (q.contains("since:day")) {
-                    this.query =  elasticsearch_client.query((resultIndex = IndexName.messages_day).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, "created_at", aggregationLimit, aggregationFields);
+                    this.query =  elasticsearch_client.query((resultIndex = IndexName.messages_day).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, AbstractObjectEntry.CREATED_AT_FIELDNAME, aggregationLimit, aggregationFields);
                 } else if (q.contains("since:week")) {
-                    this.query =  elasticsearch_client.query((resultIndex = IndexName.messages_week).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, "created_at", aggregationLimit, aggregationFields);
+                    this.query =  elasticsearch_client.query((resultIndex = IndexName.messages_week).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, AbstractObjectEntry.CREATED_AT_FIELDNAME, aggregationLimit, aggregationFields);
                 } else {
-                    this.query = elasticsearch_client.query((resultIndex = IndexName.messages_hour).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, "created_at", aggregationLimit, aggregationFields);
+                    this.query = elasticsearch_client.query((resultIndex = IndexName.messages).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, AbstractObjectEntry.CREATED_AT_FIELDNAME, aggregationLimit, aggregationFields);
                 }
             } else {
                 // use only a time frame that is sufficient for a result
-                this.query = elasticsearch_client.query((resultIndex = IndexName.messages_hour).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, "created_at", aggregationLimit, aggregationFields);
+                this.query = elasticsearch_client.query((resultIndex = IndexName.messages_hour).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, AbstractObjectEntry.CREATED_AT_FIELDNAME, aggregationLimit, aggregationFields);
                 if (!q.contains("since:hour") && insufficient(this.query, resultCount, aggregationLimit, aggregationFields)) {
-                    this.query =  elasticsearch_client.query((resultIndex = IndexName.messages_day).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, "created_at", aggregationLimit, aggregationFields);
+                    this.query =  elasticsearch_client.query((resultIndex = IndexName.messages_day).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, AbstractObjectEntry.CREATED_AT_FIELDNAME, aggregationLimit, aggregationFields);
                     if (!q.contains("since:day") && insufficient(this.query, resultCount, aggregationLimit, aggregationFields)) {
-                        this.query =  elasticsearch_client.query((resultIndex = IndexName.messages_week).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, "created_at", aggregationLimit, aggregationFields);
+                        this.query =  elasticsearch_client.query((resultIndex = IndexName.messages_week).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, AbstractObjectEntry.CREATED_AT_FIELDNAME, aggregationLimit, aggregationFields);
                         if (!q.contains("since:week") && insufficient(this.query, resultCount, aggregationLimit, aggregationFields)) {
-                            this.query =  elasticsearch_client.query((resultIndex = IndexName.messages).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, "created_at", aggregationLimit, aggregationFields);
+                            this.query =  elasticsearch_client.query((resultIndex = IndexName.messages).name(), sq.queryBuilder, order_field.getMessageFieldName(), timezoneOffset, resultCount, interval, AbstractObjectEntry.CREATED_AT_FIELDNAME, aggregationLimit, aggregationFields);
                 }}}
             }
             timeline.setHits(query.hitCount);
@@ -958,7 +1006,7 @@ public class DAO {
     }
 
     public static LinkedHashMap<String, Long> FullDateHistogram(int timezoneOffset) {
-        return elasticsearch_client.fullDateHistogram(IndexName.messages.name(), timezoneOffset, "created_at");
+        return elasticsearch_client.fullDateHistogram(IndexName.messages.name(), timezoneOffset, AbstractObjectEntry.CREATED_AT_FIELDNAME);
     }
     
     /**
@@ -1065,6 +1113,8 @@ public class DAO {
                 start = System.currentTimeMillis();
                 tl = TwitterScraper.search(q, order, true, true, 400);
                 if (post != null) post.recordEvent("local_scraper_after_unsuccessful_remote", System.currentTimeMillis() - start);
+            } else {
+                tl.writeToIndex();
             }
         } else {
             if (post != null && remote.size() > 0) post.recordEvent("omitted_scraper_latency_" + remote.get(0), peerLatency.get(remote.get(0)));

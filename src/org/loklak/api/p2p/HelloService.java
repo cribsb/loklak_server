@@ -25,7 +25,7 @@ import java.util.Map;
 
 import org.eclipse.jetty.util.log.Log;
 import org.json.JSONObject;
-import org.loklak.api.admin.StatusServlet;
+import org.loklak.api.admin.StatusService;
 import org.loklak.data.DAO;
 import org.loklak.http.ClientConnection;
 import org.loklak.server.APIHandler;
@@ -75,7 +75,7 @@ public class HelloService extends AbstractAPIHandler implements APIHandler {
         JSONObject backend_status_index_sizes = null;
         if (backend.length() > 0 && !backend_push) {
             try {
-                backend_status = StatusServlet.status(backend);
+                backend_status = StatusService.status(backend);
             } catch (IOException e) {
             	Log.getLog().warn(e);
             }
@@ -83,7 +83,7 @@ public class HelloService extends AbstractAPIHandler implements APIHandler {
         }
         long backend_messages = backend_status_index_sizes == null ? 0 : ((Number) backend_status_index_sizes.get("messages")).longValue();
         long backend_users = backend_status_index_sizes == null ? 0 : ((Number) backend_status_index_sizes.get("users")).longValue();
-        long local_messages = DAO.countLocalMessages(-1);
+        long local_messages = DAO.countLocalMessages(-1, true);
         long local_users = DAO.countLocalUsers();
         int timezoneOffset = DateParser.getTimezoneOffset();
         

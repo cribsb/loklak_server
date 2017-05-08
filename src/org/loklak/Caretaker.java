@@ -21,12 +21,11 @@ package org.loklak;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.eclipse.jetty.util.log.Log;
@@ -36,11 +35,10 @@ import org.loklak.api.p2p.PushServlet;
 import org.loklak.api.search.SuggestServlet;
 import org.loklak.data.DAO;
 import org.loklak.data.DAO.IndexName;
+import org.loklak.data.IncomingMessageBuffer;
 import org.loklak.harvester.TwitterAPI;
-import org.loklak.objects.MessageEntry;
 import org.loklak.objects.QueryEntry;
 import org.loklak.objects.Timeline;
-import org.loklak.objects.UserEntry;
 import org.loklak.tools.DateParser;
 import org.loklak.tools.OS;
 
@@ -62,7 +60,8 @@ public class Caretaker extends Thread {
     private final static long helloPeriod = 600000; // one ping each 10 minutes
     private       static long helloTime   = 0; // latest hello ping time
 
-    private static BlockingQueue<Timeline> pushToBackendTimeline = new LinkedBlockingQueue<Timeline>();
+    private static final int TIMELINE_PUSH_MINSIZE = 200;
+    private static final int TIMELINE_PUSH_MAXSIZE = 1000;
     
     /**
      * ask the thread to shut down
@@ -75,13 +74,14 @@ public class Caretaker extends Thread {
     
     @Override
     public void run() {
+        Thread.currentThread().setName("CARETAKER");
         // send a message to other peers that I am alive
         String[] remote = DAO.getConfig("backend", new String[0], ",");
         
         boolean busy = false;
         // work loop
         beat: while (this.shallRun) try {
-            // check upgrate time
+            // check upgrade time
             if (System.currentTimeMillis() > upgradeTime) {
                 // increase the upgrade time to prevent that the peer runs amok (re-tries the attempt all the time) when upgrade fails for any reason
                 upgradeTime = upgradeTime + upgradeWait;
@@ -109,13 +109,13 @@ public class Caretaker extends Thread {
             //DAO.log("connection pool: " + ClientConnection.cm.getTotalStats().toString());
             
             // peer-to-peer operation
-            Timeline tl = takeTimelineMin(pushToBackendTimeline, Timeline.Order.CREATED_AT, 200);
+            Timeline tl = DAO.outgoingMessages.takeTimelineMin(Timeline.Order.CREATED_AT, TIMELINE_PUSH_MINSIZE, TIMELINE_PUSH_MAXSIZE);
             if (tl != null && tl.size() > 0 && remote.length > 0) {
                 // transmit the timeline
                 long start = System.currentTimeMillis();
                 boolean success = PushServlet.push(remote, tl);
                 if (success) {
-                    DAO.log("success pushing " + tl.size() + " messages to backend in 1st attempt in " + (System.currentTimeMillis() - start) + " ms");
+                    DAO.log("success pushing " + tl.size() + " messages to backend " + Arrays.toString(remote) + " in 1st attempt in " + (System.currentTimeMillis() - start) + " ms");
                 }
                 if (!success) {
                     // we should try again.. but not an infinite number because then
@@ -123,15 +123,15 @@ public class Caretaker extends Thread {
                     retrylook: for (int retry = 0; retry < 5; retry++) {
                         // give back-end time to recover
                         try {Thread.sleep(3000 + retry * 3000);} catch (InterruptedException e) {}
-                        DAO.log("trying to push (again) " + tl.size() + " messages to backend, attempt #" + retry + 1 + "/5");
+                        DAO.log("trying to push (again) " + tl.size() + " messages to backend " + Arrays.toString(remote) + ", attempt #" + (retry + 1) + "/5");
                         start = System.currentTimeMillis();
                         if (PushServlet.push(remote, tl)) {
-                            DAO.log("success pushing " + tl.size() + " messages to backend in " + (retry + 2) + ". attempt in " + (System.currentTimeMillis() - start) + " ms");
+                            DAO.log("success pushing " + tl.size() + " messages to backend " + Arrays.toString(remote) + " in " + (retry + 2) + ". attempt in " + (System.currentTimeMillis() - start) + " ms");
                             success = true;
                             break retrylook;
                         }
                     }
-                    if (!success) DAO.log("failed pushing " + tl.size() + " messages to backend");
+                    if (!success) DAO.log("failed pushing " + tl.size() + " messages to backend " + Arrays.toString(remote));
                 }
                 busy = true;
             }
@@ -144,7 +144,10 @@ public class Caretaker extends Thread {
             }
             
             // run some harvesting steps
-            if (DAO.getConfig("retrieval.forbackend.enabled", false) && DAO.getConfig("backend.push.enabled", false) && (DAO.getConfig("backend", "").length() > 0)) {
+            if (DAO.getConfig("retrieval.forbackend.enabled", false) &&
+                DAO.getConfig("backend.push.enabled", false) &&
+                (DAO.getConfig("backend", "").length() > 0) &&
+                DAO.outgoingMessages.timelineSize() < TIMELINE_PUSH_MAXSIZE) {
                 int retrieval_forbackend_concurrency = (int) DAO.getConfig("retrieval.forbackend.concurrency", 1);
                 int retrieval_forbackend_loops = (int) DAO.getConfig("retrieval.forbackend.loops", 10);
                 int retrieval_forbackend_sleep_base = (int) DAO.getConfig("retrieval.forbackend.sleep.base", 300);
@@ -155,7 +158,7 @@ public class Caretaker extends Thread {
                     for (int j = 0; j < retrieval_forbackend_concurrency; j++) {
                         rts[j] = new Thread() {
                             public void run() {
-                                int count = Harvester.harvest();
+                                int count = LoklakServer.harvester.harvest();
                                 acccount.addAndGet(count);
                             }
                         };
@@ -177,7 +180,7 @@ public class Caretaker extends Thread {
             }
             
             // run searches
-            if (DAO.getConfig("retrieval.queries.enabled", false)) {
+            if (DAO.getConfig("retrieval.queries.enabled", false) && IncomingMessageBuffer.addSchedulerAvailable()) {
                 // execute some queries again: look out in the suggest database for queries with outdated due-time in field retrieval_next
                 List<QueryEntry> queryList = DAO.SearchLocalQueries("", 10, "retrieval_next", "date", SortOrder.ASC, null, new Date(), "retrieval_next");
                 for (QueryEntry qe: queryList) {
@@ -208,9 +211,17 @@ public class Caretaker extends Thread {
             DAO.healLatency(0.95f);
             
             // delete messages out of time frames
-            DAO.log("Deleted " + DAO.deleteOld(IndexName.messages_hour, DateParser.oneHourAgo()) + " outdated(hour) messages");
-            DAO.log("Deleted " + DAO.deleteOld(IndexName.messages_day, DateParser.oneDayAgo()) + " outdated(day) messages");
-            DAO.log("Deleted " + DAO.deleteOld(IndexName.messages_week, DateParser.oneWeekAgo()) + " outdated(week) messages");
+            int d;
+            d = DAO.deleteOld(IndexName.messages_hour, DateParser.oneHourAgo());
+            if (d > 0) DAO.log("Deleted " + d + " outdated(hour) messages");
+            d = DAO.deleteOld(IndexName.messages_day, DateParser.oneDayAgo());
+            if (d > 0) DAO.log("Deleted " + d + " outdated(day) messages");
+            d = DAO.deleteOld(IndexName.messages_week, DateParser.oneWeekAgo());
+            if (d > 0) DAO.log("Deleted " + d + " outdated(week) messages");
+            if (DAO.getConfig("autodeletion", false)) {
+                d = DAO.deleteOld(IndexName.messages, DateParser.oneMonthAgo());
+                if (d > 0) DAO.log("Deleted " + d + " outdated(month) messages");
+            }
         } catch (Throwable e) {
             Log.getLog().warn("CARETAKER THREAD", e);
         }
@@ -233,46 +244,6 @@ public class Caretaker extends Thread {
             for (String s: rsp) DAO.log("UPGRADE: " + s);
         } catch (IOException e) {
         	Log.getLog().warn("UPGRADE failed: " + e.getMessage(), e);
-        }
-    }
-    
-    public static void transmitTimelineToBackend(Timeline tl) {
-        if (DAO.getConfig("backend", new String[0], ",").length > 0) pushToBackendTimeline.add(tl);
-    }
-    
-    public static void transmitMessage(final MessageEntry tweet, final UserEntry user) {
-        if (DAO.getConfig("backend", new String[0], ",").length <= 0) return;
-        if (!DAO.getConfig("backend.push.enabled", false)) return;
-        Timeline tl = pushToBackendTimeline.poll();
-        if (tl == null) tl = new Timeline(Timeline.Order.CREATED_AT);
-        tl.add(tweet, user);
-        pushToBackendTimeline.add(tl);
-    }
-
-    /**
-     * if the given list of timelines contain at least the wanted minimum size of messages, they are flushed from the queue
-     * and combined into a new timeline
-     * @param dumptl
-     * @param order
-     * @param minsize
-     * @return
-     */
-    public static Timeline takeTimelineMin(final BlockingQueue<Timeline> dumptl, final Timeline.Order order, final int minsize) {
-        int c = 0;
-        for (Timeline tl: dumptl) c += tl.size();
-        if (c < minsize) return new Timeline(order);
-        
-        // now flush the timeline queue completely
-        Timeline tl = new Timeline(order);
-        try {
-            while (dumptl.size() > 0) {
-                Timeline tl0 = dumptl.take();
-                if (tl0 == null) return tl;
-                tl.putAll(tl0);
-            }
-            return tl;
-        } catch (InterruptedException e) {
-            return tl;
         }
     }
     

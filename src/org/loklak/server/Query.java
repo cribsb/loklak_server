@@ -24,6 +24,7 @@ import java.text.ParseException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Enumeration;
 import java.util.Set;
 
 import javax.servlet.http.HttpServletRequest;
@@ -34,7 +35,6 @@ import org.loklak.data.DAO;
 import org.loklak.http.AccessTracker;
 import org.loklak.http.RemoteAccess;
 import org.loklak.tools.DateParser;
-import org.loklak.tools.UTF8;
 
 public class Query {
     
@@ -44,36 +44,39 @@ public class Query {
     
     public Query(final HttpServletRequest request) {
         this.qm = new HashMap<>();
-        for (Map.Entry<String, String[]> entry: request.getParameterMap().entrySet()) {
-            this.qm.put(entry.getKey(), entry.getValue()[0]);
-        }
         this.request = request;
-        
+
+        // Add request parameters from servlet request
+        Enumeration<String> keysEnum = request.getParameterNames();
+
+        while (keysEnum.hasMoreElements()) {
+            String key = keysEnum.nextElement();
+            qm.put(key, request.getParameter(key));
+        }
+
         // discover remote host
         String clientHost = request.getRemoteHost();
         String XRealIP = request.getHeader("X-Real-IP");
         if (XRealIP != null && XRealIP.length() > 0) clientHost = XRealIP; // get IP through nginx config "proxy_set_header X-Real-IP $remote_addr;"
         
         // start tracking: get calling thread and start tracking for that
-        StackTraceElement[] stackTraceElements = Thread.currentThread().getStackTrace();
-        StackTraceElement caller = stackTraceElements[3];
-        this.track = DAO.access.startTracking(caller.getClassName(), clientHost);
-        
-        this.track.setTimeSinceLastAccess(this.track.getDate().getTime() - RemoteAccess.latestVisit(this.track.getClassName(), clientHost));
-        //System.out.println("*** this.time_since_last_access = " + this.time_since_last_access);
+        this.track = DAO.access.startTracking(request.getServletPath(), clientHost, request.getHeader("Referer"));
+        this.track.setTimeSinceLastAccess(this.track.getDate().getTime() - RemoteAccess.latestVisit(request.getServletPath(), clientHost));
         this.track.setDoSBlackout(LoklakServer.blacklistedHosts.contains(clientHost) || (!this.track.isLocalhostAccess() && (this.track.getTimeSinceLastAccess() < DAO.getConfig("DoS.blackout", 100))));
         this.track.setDoSServicereduction(!this.track.isLocalhostAccess() && (this.track.getTimeSinceLastAccess() < DAO.getConfig("DoS.servicereduction", 1000)));
+        this.track.setQuery(qm);
     }
     public void finalize() {
         this.track.finalize();
     }
-    public void initGET(final Map<String, String> qm) {
-        this.qm = qm;
-        this.track.setQuery(qm);
+    public void initGET(final Map<String, String> q) {
+        q.keySet().forEach(k -> this.qm.put(k, q.get(k)));
     }
+    // initPOST is deprecated because the purpose of it has been replaced by the constructor
+    @Deprecated
     public void initPOST(final Map<String, byte[]> map) {
-        this.qm = new HashMap<>();
-        for (Map.Entry<String, byte[]> entry: map.entrySet()) this.qm.put(entry.getKey(), UTF8.String(entry.getValue()));
+        // This method does nothing, removing it is a bad idea because it can break
+        // other servlets / services
     }
     public String getClientHost() {
         return this.track.getClientHost();

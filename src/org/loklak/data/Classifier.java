@@ -39,7 +39,7 @@ public class Classifier {
     public enum Category {
         joy,trust,fear,surprise,sadness,disgust,anger,anticipation,
         swear,sex,leet,troll,
-        english, german, french, spanish,
+        english, german, french, spanish, dutch,
         NONE;
     }
 
@@ -50,7 +50,7 @@ public class Classifier {
         
         emotion(new Category[]{Category.joy,Category.trust,Category.fear,Category.surprise,Category.sadness,Category.disgust,Category.anger,Category.anticipation}),
         profanity(new Category[]{Category.swear,Category.sex,Category.leet,Category.troll}),
-        language(new Category[]{Category.english, Category.german, Category.french, Category.spanish});
+        language(new Category[]{Category.english, Category.german, Category.french, Category.spanish, Category.dutch});
         
         public Map<Category, Set<String>> categories;
         BayesClassifier<String, Category> bayes;
@@ -159,7 +159,7 @@ public class Classifier {
          */
         
         // load a test set
-        if (DAO.countLocalMessages(-1) > 0) {
+        if (DAO.countLocalMessages(-1, true) > 0) {
             DAO.log("Classifier: loading test set for " + initsize + " messages...");
             DAO.SearchLocalMessages testset = new DAO.SearchLocalMessages("", Timeline.Order.CREATED_AT, 0, initsize, 0);
             Timeline tl = testset.timeline;
@@ -168,7 +168,7 @@ public class Classifier {
             for (Context c: Context.values()) {
                 //Set<String> voc = c.vocabulary();
                 for (MessageEntry m: tl) {
-                    c.learnPhrase(m.getText(Integer.MAX_VALUE, ""));
+                    c.learnPhrase(m.getText());
                     count++;
                     if (count % 100 == 0) DAO.log("Classifier: performed " + count + " learn steps");
                 }

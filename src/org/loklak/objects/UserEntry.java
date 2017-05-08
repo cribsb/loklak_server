@@ -74,7 +74,7 @@ public class UserEntry extends AbstractObjectEntry implements ObjectEntry {
     
     public SourceType getType() {
         try {
-            return new SourceType(parseString((String) this.map.get("$type")));
+            return SourceType.byName(parseString((String) this.map.get("$type")));
         } catch (RuntimeException e) {
         	Log.getLog().warn(e);
             return null;
@@ -125,6 +125,10 @@ public class UserEntry extends AbstractObjectEntry implements ObjectEntry {
 
     public void setProfileImageUrl(String url) {
         this.map.put(url.startsWith("https:") ? field_profile_image_url_https : field_profile_image_url_http, url);
+    }
+
+    public void setName(String Name) {
+        this.map.put(field_name, Name);
     }
     
     public void setProfileImage(byte[] image) {

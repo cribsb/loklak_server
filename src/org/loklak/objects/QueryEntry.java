@@ -27,6 +27,7 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -40,6 +41,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.loklak.data.Classifier;
 import org.loklak.data.DAO;
+import org.loklak.harvester.TwitterScraper.TwitterTweet;
 import org.loklak.geo.GeoLocation;
 import org.loklak.geo.GeoMark;
 import org.loklak.tools.DateParser;
@@ -366,10 +368,10 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
         }
     }
     
-    public static Timeline applyConstraint(Timeline tl0, Tokens tokens, boolean applyLocationConstraint) {
+    public static TwitterTimeline applyConstraint(TwitterTimeline tl0, Tokens tokens, boolean applyLocationConstraint) {
          if (tokens.constraints_positive.size() == 0 && tokens.constraints_negative.size() == 0 && tokens.modifier.size() == 0) return tl0;
-        Timeline tl1 = new Timeline(tl0.getOrder());
-        messageloop: for (MessageEntry message: tl0) {
+        TwitterTimeline tl1 = new TwitterTimeline(tl0.getOrder());
+        messageloop: for (TwitterTweet message: tl0) {
 
             // check modifier
             if (tokens.modifier.containsKey("from")) {
@@ -383,9 +385,10 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
                 }
             }
             if (applyLocationConstraint && tokens.bbox != null) {
-                if (message.location_point == null || message.location_point.length < 2) continue messageloop; //longitude, latitude
-                if (message.location_point[0] < tokens.bbox[0] || message.location_point[0] > tokens.bbox[2] ||  // double[]{lon_west,lat_south,lon_east,lat_north}
-                    message.location_point[1] > tokens.bbox[1] || message.location_point[1] < tokens.bbox[3]) continue messageloop;
+                double[] location_point = message.getLocationPoint();
+                if (location_point == null || location_point.length < 2) continue messageloop; //longitude, latitude
+                if (location_point[0] < tokens.bbox[0] || location_point[0] > tokens.bbox[2] ||  // double[]{lon_west,lat_south,lon_east,lat_north}
+                    location_point[1] > tokens.bbox[1] || location_point[1] < tokens.bbox[3]) continue messageloop;
             }
             
             // check constraints
@@ -495,38 +498,88 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
         public Date since;
         public Date until;
 
-        public ElasticsearchQuery(String q, int timezoneOffset) {
+        public ElasticsearchQuery(String q, int timezoneOffset, ArrayList<String> filterList) {
             // default values for since and util
             this.since = new Date(0);
             this.until = new Date(Long.MAX_VALUE);
+
             // parse the query
-            this.queryBuilder = preparse(q, timezoneOffset);
+            this.queryBuilder = preparse(q, timezoneOffset, filterList);
         }
 
-        private QueryBuilder preparse(String q, int timezoneOffset) {
+        public ElasticsearchQuery(
+                Map<String, String> getMap,
+                Map<String, String> notGetMap,
+                Map<String, String> mayAlsoGetMap) {
+            // default values for since and util
+            this.since = new Date(0);
+            this.until = new Date(Long.MAX_VALUE);
+
+            // parse the query
+            this.queryBuilder = preparse(getMap, notGetMap, mayAlsoGetMap);
+        }
+
+        public ElasticsearchQuery(String q, int timezoneOffset) {
+            this(q, timezoneOffset, new ArrayList<>());
+        }
+
+        private QueryBuilder preparse(String q, int timezoneOffset, ArrayList<String> filterList) {
             // detect usage of OR connector usage.
             q = QueryEntry.fixQueryMistakes(q);
             List<String> terms = splitIntoORGroups(q); // OR binds stronger than AND
             if (terms.size() == 0) return QueryBuilders.constantScoreQuery(QueryBuilders.matchAllQuery());
-            
             // special handling
-            if (terms.size() == 1) return parse(terms.get(0), timezoneOffset);
+            if (terms.size() == 1) return parse(terms.get(0), timezoneOffset, filterList);
 
             // generic handling
             BoolQueryBuilder aquery = QueryBuilders.boolQuery();
             for (String t: terms) {
-                QueryBuilder partial = parse(t, timezoneOffset);
+                QueryBuilder partial = parse(t, timezoneOffset, filterList);
                 aquery.filter(partial);
             }
             return aquery;
         }
-        
-        private QueryBuilder parse(String q, int timezoneOffset) {
+
+        private QueryBuilder preparse(
+                Map<String, String> getMap,
+                Map<String, String> notGetMap,
+                Map<String, String> mayAlsoGetMap) {
+            BoolQueryBuilder query = new BoolQueryBuilder();
+            // Result must have these fields. Acts as AND operator
+            if(getMap != null) {
+                for(Map.Entry<String, String> field : getMap.entrySet()) {
+                    query.must(QueryBuilders.termQuery(field.getKey(), field.getValue()));
+                }
+            }
+            // Result must have these fields.
+            if(notGetMap != null) {
+                for(Map.Entry<String, String> field : notGetMap.entrySet()) {
+                    query.mustNot(QueryBuilders.termQuery(field.getKey(), field.getValue()));
+                }
+            }
+            // Result may preferably also get these fields. Acts as OR operator
+            if(mayAlsoGetMap != null) {
+                for(Map.Entry<String, String> field : mayAlsoGetMap.entrySet()) {
+                    query.should(QueryBuilders.termQuery(field.getKey(), field.getValue()));
+                }
+            }
+            return query;
+        }
+
+        private QueryBuilder preparse(String q, int timezoneOffset) {
+            return preparse(q, timezoneOffset, new ArrayList<>());
+        }
+
+        private QueryBuilder parse (
+                String q,
+                int timezoneOffset, 
+                ArrayList<String> filterList
+        ) {
             // detect usage of OR ORconnective usage. Because of the preparse step we will have only OR or only AND here.
             q = q.replaceAll(" AND ", " "); // AND is default
             boolean ORconnective = q.indexOf(" OR ") >= 0;
             q = q.replaceAll(" OR ", " "); // if we know that all terms are OR, we remove that and apply it later
-            
+
             // tokenize the query
             Set<String> qe = new LinkedHashSet<String>();
             Matcher m = tokenizerPattern.matcher(q);
@@ -777,6 +830,24 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
                 filters.add(QueryBuilders.constantScoreQuery(QueryBuilders.termsQuery("place_context", (constraint_about ? PlaceContext.ABOUT : PlaceContext.FROM).name())));
             }
 
+            if (filterList.size() > 0) {
+                
+                for (String filter: filterList) {
+                    switch(filter) {
+                        case "image":
+                        case "video":
+                            // filter result if images_count (or video_count) is 0
+                            filters.add(QueryBuilders.boolQuery().mustNot(
+                                    QueryBuilders.constantScoreQuery(QueryBuilders.termQuery(filter + "s_count", "0"))
+                            ));
+                            break;
+                        // TODO: Add more filters here
+
+                        default:
+                            break;
+                    } 
+                }
+            }
             // special treatment of location constraints of the form /location=lon-west,lat-south,lon-east,lat-north i.e. /location=8.58,50.178,8.59,50.181
             //                      source_type constraint of the form /source_type=FOSSASIA_API -> search exact term (source_type must exists in SourceType enum)
             for (String cs: constraints_positive) {
@@ -835,8 +906,14 @@ public class QueryEntry extends AbstractObjectEntry implements ObjectEntry {
             QueryBuilder cquery = filters.size() == 0 ? bquery : QueryBuilders.boolQuery().filter(bquery).filter(queryFilter);
             return cquery;
         }
+
+        private QueryBuilder parse (String q, int timezoneOffset) {        
+            return parse(q, timezoneOffset, new ArrayList<>());
+        }
+
+
     }
-    
+
     public static enum PlaceContext {
         
         FROM,  // the message was made at that place

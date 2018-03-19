@@ -19,10 +19,10 @@
 
 package org.loklak.objects;
 
-import org.eclipse.jetty.util.log.Log;
 import org.elasticsearch.common.Base64;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.loklak.data.DAO;
 
 import java.io.IOException;
 import java.util.Date;
@@ -76,7 +76,7 @@ public class UserEntry extends AbstractObjectEntry implements ObjectEntry {
         try {
             return SourceType.byName(parseString((String) this.map.get("$type")));
         } catch (RuntimeException e) {
-        	Log.getLog().warn(e);
+        	DAO.severe(e);
             return null;
         }
     }
@@ -183,4 +183,9 @@ public class UserEntry extends AbstractObjectEntry implements ObjectEntry {
         System.out.println(new UserEntry("", "test", "http://test.com", "Mr. Test").toString());
         //String j = "{\"name\":\"Mr. Test\",\"screen_name\":\"test\",\"profile_image_url\":\"http://test.com\"}";
     }
+
+    public String toString() {
+        return this.toJSON().toString();
+    }
+
 }

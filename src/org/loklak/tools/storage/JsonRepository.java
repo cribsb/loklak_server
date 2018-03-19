@@ -37,7 +37,6 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.zip.GZIPInputStream;
 
-import org.eclipse.jetty.util.log.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.loklak.data.DAO;
@@ -72,12 +71,14 @@ public class JsonRepository {
         REWRITABLE; // dump files are not compressed but can be re-written. Data is only indexed in RAM and retrieved from file.
     }
    
-    final File dump_dir, dump_dir_own, dump_dir_import, dump_dir_imported, dump_dir_buffer;
-    final String dump_file_prefix;
-    final JsonRandomAccessFile json_log;
-    final Mode mode;
-    final int concurrency;
-    final Map<String, JsonRandomAccessFile> buffers;
+    private final File dump_dir, dump_dir_own, dump_dir_import, dump_dir_imported, dump_dir_buffer;
+    private final String dump_file_prefix;
+    private final Mode mode;
+    private final int concurrency;
+    private final boolean dailyDump;
+    private final Map<String, JsonRandomAccessFile> buffers;
+    private JsonRandomAccessFile json_log;
+    private long write_counter_reset_time, write_counter, not_in_index_write_counter;
     
     public JsonRepository(File dump_dir, String dump_file_prefix, String readme, final Mode mode, final boolean dailyDump, final int concurrency) throws IOException {
         this.dump_dir = dump_dir;
@@ -92,7 +93,11 @@ public class JsonRepository {
         this.dump_dir_imported.mkdirs();
         this.dump_dir_buffer.mkdirs();
         this.mode = mode;
+        this.dailyDump = dailyDump;
         this.concurrency = concurrency;
+        this.write_counter = 0;
+        this.not_in_index_write_counter = 0;
+        this.write_counter_reset_time = System.currentTimeMillis();
         if (readme != null) {
             File message_dump_dir_readme = new File(this.dump_dir, "readme.txt");
             if (!message_dump_dir_readme.exists()) {
@@ -101,8 +106,12 @@ public class JsonRepository {
                 w.close();
             }
         }
-        this.json_log = new JsonRandomAccessFile(getCurrentDump(dump_dir_own, this.dump_file_prefix, mode, dailyDump), this.concurrency);
         this.buffers = new TreeMap<>();
+        open();
+    }
+    
+    private void open() throws IOException {
+        this.json_log = new JsonRandomAccessFile(getCurrentDump(dump_dir_own, this.dump_file_prefix, this.mode, this.dailyDump), this.concurrency);
     }
     
     public File getDumpDir() {
@@ -113,6 +122,18 @@ public class JsonRepository {
         return this.mode;
     }
 
+    public int objectsPersSecond() {
+        long time = System.currentTimeMillis() - this.write_counter_reset_time;
+        if (time == 0) return 0;
+        return (int) (this.write_counter * 1000L / time);
+    }
+    
+    public int objectsNotInIndexPerSecond() {
+        long time = System.currentTimeMillis() - this.write_counter_reset_time;
+        if (time == 0) return 0;
+        return (int) (this.not_in_index_write_counter * 1000L / time);
+    }
+    
     private static String dateSuffix(final boolean dailyDump, final Date d) {
         return (dailyDump ? dateFomatDaily : dateFomatMonthly).format(d);
     }
@@ -157,7 +178,7 @@ public class JsonRepository {
                         try {
                             Compression.gunzip(source, dest, true);
                         } catch (IOException e) {
-                        	Log.getLog().warn(e);
+                        	DAO.severe(e);
                             // mark the file as invalid
                             if (dest.exists()) dest.delete();
                             final File invalid = new File(path, d + ".invalid");
@@ -180,24 +201,47 @@ public class JsonRepository {
         return new File(path, prefix + currentDatePart + "_" + random + ".txt");
     }
     
-    public JsonFactory write(JSONObject json) throws IOException {
-        String line = json.toString(); // new ObjectMapper().writer().writeValueAsString(map);
-        JsonFactory jf = null;
-        byte[] b = line.getBytes(StandardCharsets.UTF_8);
-        long seekpos = this.json_log.appendLine(b);
-        jf = this.json_log.getJsonFactory(seekpos, b.length);
-        return jf;
+    /**
+     * write a json into the dump
+     * @param json the object
+     * @param inIndex true if the object exists also somewhere in an index, false otherwise
+     * @return the factory
+     * @throws IOException
+     */
+    public JsonFactory write(JSONObject json, boolean inIndex) throws IOException {
+        return write(json.toString(), inIndex);
     }
     
-    public JsonFactory write(JSONObject json, char opkey) throws IOException {
+    public JsonFactory write(JSONObject json, char opkey, boolean inIndex) throws IOException {
         String line = json.toString(); // new ObjectMapper().writer().writeValueAsString(map);
-        JsonFactory jf = null;
         StringBuilder sb = new StringBuilder();
         sb.append('{').append('\"').append(OPERATION_KEY_STRING).append('\"').append(':').append('\"').append(opkey).append('\"').append(',');
         sb.append(line.substring(1));
-        byte[] b = sb.toString().getBytes(StandardCharsets.UTF_8);
-        long seekpos = this.json_log.appendLine(b);
-        jf = this.json_log.getJsonFactory(seekpos, b.length);
+        return write(sb.toString(), inIndex);
+    }
+    
+    private JsonFactory write(String line, boolean inIndex) throws IOException {
+        byte[] b = line.getBytes(StandardCharsets.UTF_8);
+        JsonFactory jf = null;
+        try {
+            long seekpos = this.json_log.appendLine(b);
+            jf = this.json_log.getJsonFactory(seekpos, b.length);
+            
+            // increase counter
+            this.write_counter++;
+            if (!inIndex) this.not_in_index_write_counter++;
+            if (System.currentTimeMillis() - this.write_counter_reset_time > 600000) {
+                this.write_counter_reset_time = System.currentTimeMillis();
+                this.write_counter = 0;
+                this.not_in_index_write_counter = 0;
+            }
+        } catch (IOException e) {
+            if (e.getMessage().indexOf("Stream Closed") < 0) throw e;
+            open();
+            long seekpos = this.json_log.appendLine(b);
+            jf = this.json_log.getJsonFactory(seekpos, b.length);
+            close();
+        }
         return jf;
     }
     

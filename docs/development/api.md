@@ -5,12 +5,14 @@ This API can be used to create your own social media search engine using the pub
 ## Client Authentication
 
 You can access the API `without any authentication`. This service can be use without subscription, however, there is a user management to grant users administration rights. Excessive usage of APIs is restricted with DoS protection. Some servlets can only be called from localhost or administration rights to protect user data submitted to the server. There are three classes for access rights: 
- 
+
+<!-- markdown+ -->
 | Class | Accesibility |
 | --- | --- |
 | Open | access without any restrictions for all clients from any IP |
 | Limited | localhost clients or administration users are granted more data than public clients |
 | Restricted | only localhost clients or administration users are granted access |
+<!-- endmarkdown+ -->
 
 ## Cross-Origin Resource Sharing
 
@@ -190,78 +192,103 @@ fields          = <field name list, separated by ','>         // aggregation fie
 limit           = <maximum number of facets for each field>   // a limitation of number of facets for each aggregation
 timezoneOffset  = <offset in minutes>                         // offset applied on since:, until: and the date histogram
 minified        = <true|false>                                // minify the result, default false, i.e. minified=true
+filter          = <image|video|image,video>                   // filter and output the results with images, videos or both according to value.  Like "filter=video"
 ```
 A search result in JSON format looks like:
 
 ```
 {
-  "readme_0" : "THIS JSON IS THE RESULT OF YOUR SEARCH QUERY - THERE IS NO WEB PAGE WHICH SHOWS THE RESULT!",
-  "readme_1" : "loklak.org is the framework for a message search system, not the portal, read: http://loklak.org/about.html#notasearchportal",
-  "readme_2" : "This is supposed to be the back-end of a search portal. For the api, see http://loklak.org/api.html",
-  "readme_3" : "Parameters q=(query), source=(cache|backend|twitter|all), callback=p for jsonp, maximumRecords=(message count), minified=(true|false)",
-  "search_metadata" : {
-    "itemsPerPage" : "1",
-    "count" : "1",
-    "count_twitter_all" : 0,
-    "count_twitter_new" : 0,
-    "count_backend" : 0,
-    "count_cache" : 7336,
-    "hits" : 7336,
-    "period" : 9223372036854775807,
-    "query" : "fossasia",
-    "client" : "122.175.88.159",
-    "time" : 1196,
-    "servicereduction" : "false",
-    "scraperInfo" : "local"
+  "readme_0": "THIS JSON IS THE RESULT OF YOUR SEARCH QUERY - THERE IS NO WEB PAGE WHICH SHOWS THE RESULT!",
+  "readme_1": "loklak.org is the framework for a message search system, not the portal, read: http://loklak.org/about.html#notasearchportal",
+  "readme_2": "This is supposed to be the back-end of a search portal. For the api, see http://loklak.org/api.html",
+  "readme_3": "Parameters q=(query), source=(cache|backend|twitter|all), callback=p for jsonp, maximumRecords=(message count), minified=(true|false)",
+  "search_metadata": {
+    "startRecord": "1",
+    "maximumRecords": "1",
+    "count": "2",
+    "hits": 2,
+    "period": 81095001,
+    "query": "fossasia from:fossasia",
+    "filter": "video",
+    "client": "127.0.0.1",
+    "time": 1964,
+    "servicereduction": "false",
+    "count_twitter_all": 0,
+    "count_twitter_new": 2,
+    "count_backend": 0,
+    "cache_hits": 0,
+    "scraperInfo": "local",
+    "index": "messages"
   },
-  "statuses" : [ {
-    "timestamp" : "2016-04-21T17:33:06.959Z",
-    "created_at" : "2016-04-21T15:39:39.000Z",
-    "screen_name" : "notrademark",
-    "text" : "@fossasia @mariobehling sure, I am happy about every pull request on GitHub. What features do you plan?",
-    "link" : "https://twitter.com/notrademark/status/723174364968005632",
-    "id_str" : "723174364968005632",
-    "source_type" : "USER",
-    "provider_type" : "REMOTE",
-    "provider_hash" : "1cadbfd3",
-    "retweet_count" : 0,
-    "favourites_count" : 0,
-    "images" : [ ],
-    "images_count" : 0,
-    "audio" : [ ],
-    "audio_count" : 0,
-    "videos" : [ ],
-    "videos_count" : 0,
-    "place_name" : "Planá",
-    "place_id" : "",
-    "place_context" : "FROM",
-    "location_point" : [ 12.743780125278874, 49.86816018348006 ],
-    "location_radius" : 0,
-    "location_mark" : [ 12.74180946741263, 49.86938948602838 ],
-    "location_source" : "PLACE",
-    "hosts" : [ ],
-    "hosts_count" : 0,
-    "links" : [ ],
-    "links_count" : 0,
-    "mentions" : [ "fossasia", "mariobehling" ],
-    "mentions_count" : 2,
-    "hashtags" : [ ],
-    "hashtags_count" : 0,
-    "classifier_language" : "english",
-    "classifier_language_probability" : 2.7384035E-14,
-    "without_l_len" : 103,
-    "without_lu_len" : 79,
-    "without_luh_len" : 79,
-    "user" : {
-      "screen_name" : "notrademark",
-      "user_id" : "2374283574",
-      "name" : "msquare",
-      "profile_image_url_https" : "https://pbs.twimg.com/profile_images/514057179737772032/OPi1EgNA_bigger.png",
-      "appearance_first" : "2015-08-17T02:42:20.874Z",
-      "appearance_latest" : "2015-08-17T02:42:20.874Z"
+  "statuses": [{
+    "timestamp": "2017-06-09T00:59:43.998Z",
+    "created_at": "2016-10-02T05:56:35.000Z",
+    "screen_name": "fossasia",
+    "text": "Colin Charles @bytebot coming back #FOSSASIA Summit 2017 more updates on #MariaDB . Check out his last talk https://youtu.be/IMZQA80SCj4 @mariadb",
+    "link": "https://twitter.com/fossasia/status/782459243093958656",
+    "id_str": "782459243093958656",
+    "canonical_id": "",
+    "parent": "",
+    "source_type": "TWITTER",
+    "provider_type": "SCRAPED",
+    "retweet_count": 1,
+    "favourites_count": 0,
+    "place_name": "Mora",
+    "place_id": "",
+    "text_length": 145,
+    "place_context": "ABOUT",
+    "place_country": "Cameroon",
+    "place_country_code": "CM",
+    "place_country_center": [
+      -7.616439739994902,
+      6.287674902140935
+    ],
+    "location_point": [
+      14.140109975887498,
+      11.046110126677007
+    ],
+    "location_radius": 0,
+    "location_mark": [
+      14.131979127782213,
+      11.040933493103351
+    ],
+    "location_source": "ANNOTATION",
+    "hosts": ["youtu.be"],
+    "hosts_count": 1,
+    "links": ["https://youtu.be/IMZQA80SCj4"],
+    "links_count": 1,
+    "unshorten": {},
+    "images": [],
+    "images_count": 0,
+    "audio": [],
+    "audio_count": 0,
+    "videos": ["https://youtu.be/IMZQA80SCj4"],
+    "videos_count": 1,
+    "mentions": [
+      "bytebot",
+      "mariadb"
+    ],
+    "mentions_count": 2,
+    "hashtags": [
+      "fossasia",
+      "mariadb"
+    ],
+    "hashtags_count": 2,
+    "classifier_language": "english",
+    "classifier_language_probability": 2.4653261391091047E-22,
+    "without_l_len": 116,
+    "without_lu_len": 98,
+    "without_luh_len": 79,
+    "user": {
+      "appearance_first": "2017-06-09T00:59:43.999Z",
+      "profile_image_url_https": "https://pbs.twimg.com/profile_images/1141238022/fossasia-cubelogo_bigger.jpg",
+      "screen_name": "fossasia",
+      "user_id": "157702526",
+      "name": "FOSSASIA",
+      "appearance_latest": "2017-06-09T00:59:43.999Z"
     }
-  } ],
-  "aggregations" : { }
+  }],
+  "aggregations": {}
 }
 ```
 
@@ -756,6 +783,109 @@ The crawler returns immediately with an object describing the index size (exactl
     "pending" : [ "oVirt", "repeatedly", "FOSSAsia", "FOSSASIA", "RedHatJobs", "shwetank", "umnovnik", "12geeks", "TheTechScribe", "HerwonoWr", "ovirt", "opensource", "redhatopen", "Virtualization", "mishari", "doron_f", "penhleakchan", "dionyziz", "lilithlela", "CLT2015", "google", "sparhopper", "smokingwheels", "JetLeak", "ARQUEIRO_BR", "Emil_Blume", "catering", "appropedia", "connimark", "hanshafner", "free", "bugfix", "LordBexar", "coloofrm", "Technovelgy", "erikandgo", "onboard", "SpaceX", "TexasSpaceport", "lukealization", "space", "Tako3ka", "Mars", "UrHRGuru", "SpaceXNews", "defense", "_techstories", "defense_dp", "Scott_Allen", "rtgstrf", "canaldenoticias", "GileJudy", "NASA", "Soyuz", "justinrigodn", "ISS", "letsnurture", "BlerdTurd", "econdev", "PSBJ", "TheRealBuzz", "canalnews", "PappalardoJoe", "kdurhamevntse", "Patrick_S101", "Tesla", "EntreGulss", "US4USA" ],
     "processed" : [ "spacex", "yacy_search", "singapore", "fossasia" ]
   }
+}
+```
+
+## /api/stream.json
+
+```
+This API is open and can be accessed without any restrictions!
+```
+
+The stream servlet is an [Eventsource](https://www.w3.org/TR/2009/WD-eventsource-20090423/) servlet for streaming message from loklak as they are discovered. User can pass channel as the request parameter:
+```
+channel  =  <string>  # Name of channel to listen on
+```
+
+Example:
+http://api.loklak.org/api/stream.json?channel=twitter%2Fhashtag%2FFOSSASIA (channel=twitter/hashtag/FOSSASIA).
+
+Some peers may have disabled streaming API. In this case, the users will see a `404` while accessing the servlet.
+
+See the list of available channels [here](../misc/StreamChannels.md).
+
+## /api/classifier.json
+
+```
+This API is open and can be accessed without any restrictions!
+```
+
+The classifier servlet can be used to get aggregated data from classifiers present in loklak. The supported classifiers are
+- emotion
+- profanity
+- language
+
+Request properties are:
+
+```
+classifier  = <string>                                # Name of classifier
+classes     = <strings, comma separated>              # Classes to include in response
+all         = <true | false>                          # True includes all classes for the classifier. Defaults to false
+countries   = <country codes | all, comma separated>  # List of countries to get aggregation for, including "all" will return results for all possible countries
+since       = <timestamp>                             # Timestamp to start yyyy-MM-ddThh:mm:ss.SSS or partial
+until       = <timestamp>                             # Timestamp to end yyyy-MM-ddThh:mm:ss.SSS or partial
+minified    = <true | false>                          # Whether to minify results. Defaults to false
+callback    = <string>                                # JSONP callback function name
+```
+
+Timestamp can be anything [supported by Elasticsearch](https://www.elastic.co/guide/en/elasticsearch/reference/current/mapping-date-format.html). Some examples include:
+- `2011-11-09T08:46:13.221`
+- `2011-11`
+- `2011-11-09T08:46`
+
+Examples of API call:  
+http://api.loklak.org/api/classifier.json?classifier=emotion&classes=fear,anger&since=2017-06&countries=in&minified=true
+
+Here is an example of result - 
+
+```JSON
+{
+    "aggregations": {
+        "GLOBAL": [
+            {
+                "avg": 2.5526744278749015e-07,
+                "class": "anger",
+                "count": 458057,
+                "sum": 0.11692703904090937
+            },
+            {
+                "avg": 1.9712122980312926e-07,
+                "class": "fear",
+                "count": 480783,
+                "sum": 0.0947725362284379
+            }
+        ],
+        "in": [
+            {
+                "avg": 4.1480348032586565e-08,
+                "class": "anger",
+                "count": 16597,
+                "sum": 0.0006884493362968393
+            },
+            {
+                "avg": 1.620086000206267e-08,
+                "class": "fear",
+                "count": 18450,
+                "sum": 0.00029890586703805623
+            }
+        ]
+    },
+    "metadata": {
+        "all": "false",
+        "classes": "fear, anger",
+        "classifier": "emotion",
+        "client": "162.158.155.100",
+        "servicereduction": "false",
+        "since": "2017-06",
+        "time": 1
+    },
+    "session": {
+        "identity": {
+            "anonymous": true,
+            "name": "162.158.155.100",
+            "type": "host"
+        }
+    }
 }
 ```
 

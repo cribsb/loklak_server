@@ -1,22 +1,22 @@
 # loklak
 [![Join the chat at https://gitter.im/loklak/loklak](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/loklak/loklak)
-[![Docker Pulls](https://img.shields.io/docker/pulls/mariobehling/loklak.svg?maxAge=2592000?style=flat-square)](https://hub.docker.com/r/mariobehling/loklak/)
+[![Docker Pulls](https://img.shields.io/docker/pulls/loklak/loklak_server.svg?maxAge=2592000?style=flat-square)](https://hub.docker.com/r/mariobehling/loklak/)
 [![Percentage of issues still open](http://isitmaintained.com/badge/open/loklak/loklak_server.svg)](http://isitmaintained.com/project/loklak/loklak_server "Percentage of issues still open")
 [![Average time to resolve an issue](http://isitmaintained.com/badge/resolution/loklak/loklak_server.svg)](http://isitmaintained.com/project/loklak/loklak_server "Average time to resolve an issue")
-[![Twitter](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Wow%20Check%20Loklak%20on%20@gitHub%20@loklak_app%20@lklknt:%20https://github.com/loklak/loklak_server%20&url=%5Bobject%20Object%5D)
-[![Twitter Follow](https://img.shields.io/twitter/follow/lklknt.svg?style=social&label=Follow&maxAge=2592000?style=flat-square)](https://twitter.com/lklknt)
+[![Twitter](https://img.shields.io/twitter/url/http/shields.io.svg?style=social)](https://twitter.com/intent/tweet?text=Wow%20Check%20Loklak%20on%20@gitHub%20@loklak_app%20@loklak_:%20https://github.com/loklak/loklak_server%20&url=%5Bobject%20Object%5D)
+[![Twitter Follow](https://img.shields.io/twitter/follow/lklknt.svg?style=social&label=Follow&maxAge=2592000?style=flat-square)](https://twitter.com/loklak_)
 
-Development: [![Build Status](https://travis-ci.org/loklak/loklak_server.svg?branch=development)](https://travis-ci.org/loklak/loklak_server) [![Docker Build Status](https://img.shields.io/docker/build/jrottenberg/ffmpeg.svg)](https://hub.docker.com/r/mariobehling/loklak/builds/)
-Master: [![Build Status](https://travis-ci.org/loklak/loklak_server.svg?branch=master)](https://travis-ci.org/loklak/loklak_server)
+Development: [![Build Status](https://travis-ci.org/loklak/loklak_server.svg?branch=development)](https://travis-ci.org/loklak/loklak_server)
+Master: [![Build Status](https://travis-ci.org/loklak/loklak_server.svg?branch=master)](https://travis-ci.org/loklak/loklak_server)  
 Dependencies: [![Gemnasium](https://img.shields.io/gemnasium/mathiasbynens/he.svg)](https://gemnasium.com/loklak)
 
-loklak is a server application which is able to collect messages from various sources, including twitter. The server contains a search index and a peer-to-peer index sharing interface. All messages are stored in an elasticsearch index. An automatic deployment from the development branch at GitHub is available for tests here https://loklak-server-dev.herokuapp.com
+loklak is a server application which is able to collect messages from various sources, including twitter. The server contains a search index and a peer-to-peer index sharing interface. All messages are stored in an elasticsearch index. An automatic deployment from the development branch at GitHub is available for tests at https://loklak-server-dev.herokuapp.com and http://staging.loklak.org.
 
 'Lok Lak' is also a very tasty Cambodian stir-fry meat dish (usually beef) with a LOT of fresh black pepper. If you ever have the chance to eat Beef Lok Lak, please try it. I hope not to scare vegetarians with this name, currently I am one as well.
 
 ## Communication
 
-Please join our mailing list to discuss questions regarding the project: https://groups.google.com/forum/#!forum/loklak
+Please join our mailing list to discuss questions regarding the project: https://groups.google.com/forum/#!forum/opntec-dev
 
 Our chat channel is on gitter here: https://gitter.im/loklak/loklak
 
@@ -38,12 +38,13 @@ If you like to be anonymous when searching things, want to archive tweets or mes
 [![Deploy on Scalingo](https://cdn.scalingo.com/deploy/button.svg)](https://my.scalingo.com/deploy?source=https://github.com/loklak/loklak_server)
 [![Deploy to Bluemix](https://bluemix.net/deploy/button.png)](https://bluemix.net/deploy?repository=https://github.com/loklak/loklak_server)
 [![Deploy to Docker Cloud](https://files.cloud.docker.com/images/deploy-to-dockercloud.svg)](https://cloud.docker.com/stack/deploy/)
+[![Deploy to Azure](https://azuredeploy.net/deploybutton.svg)](https://deploy.azure.com/?repository=https://github.com/loklak/loklak_server)
 
 At this time, loklak is not provided in compiled form, you easily build it yourself. It's not difficult and done in one minute! The source code is hosted at https://github.com/loklak/loklak_server, you can download it and run loklak with:
 
     > git clone https://github.com/loklak/loklak_server.git
     > cd loklak_server
-    > ant
+    > ./gradlew build
 
 This command may give an error while building like `Unable to locate tools.jar`.
 It means that there is no java in your system or JAVA_HOME Environment Variable is not set. [Refererence](https://www.digitalocean.com/community/tutorials/how-to-install-java-on-ubuntu-with-apt-get) to fix it and run `ant` again.
@@ -72,6 +73,9 @@ To install loklak with Docker please refer to the [loklak Docker installation re
 
 ### How do I deploy loklak with Heroku?
 You can easily deploy to Heroku by clicking the Deploy to Heroku button above. To install loklak using Heroku Toolbelt, please refer to the [loklak Heroku installation readme](/docs/installation/installation_heroku.md).
+
+### How do I deploy loklak on Google Cloud with Kubernetes?
+To install loklak on Google Cloud with Kubernetes, please refer to the [loklak Google Cloud with Kubernetes installation readme](/docs/installation/installation_google_cloud_kubernetes.md).
 
 ### How do I deploy loklak with cloud9?
 To install loklak with cloud9 please refer to the [loklak cloud9 installation readme](/docs/installation/installation_cloud9.md).
@@ -120,37 +124,37 @@ At http://loklak.github.io/loklak_server/ or by building them via 'ant javadoc'
 
 ### Where can I get the latest news about loklak?
 
-Hey, this is the tool for that! Just put http://loklak.org/api/search.rss?q=%23loklak into your rss reader. Oh wait.. you will get a lot of information about tasty Cambodian food with that as well. Alternatively you may also read the authors timeline using http://loklak.org/api/search.rss?q=0rb1t3r or just follow @0rb1t3r (that's a zero after the at sign)
+Hey, this is the tool for that! Just put http://api.loklak.org/api/search.rss?q=%23loklak into your rss reader. Oh wait.. you will get a lot of information about tasty Cambodian food with that as well. Alternatively you may also read the authors timeline using http://api.loklak.org/api/search.rss?q=0rb1t3r or just follow @0rb1t3r (that's a zero after the at sign).
 
 ## How to compile using Gradle?
+
 - To install Gradle on Ubuntu:
 
-  ```
-  $ sudo add-apt-repository ppa:cwchien/gradle
+    ```
+    $ sudo add-apt-repository ppa:cwchien/gradle
+    $ sudo apt-get update
+    $ sudo apt-get install gradle
+    ```
 
-  $ sudo apt-get update
-
-  $ sudo apt-get install gradle
-  ```
 - To install Gradle on Mac OS X with homebrew
 
-  ```
-  brew install gradle
-  ```
+    ```
+    brew install gradle
+    ```
 
-  Compile the source to classes and a jar file
+    Compile the source to classes and a jar file
 
-  ```
-  gradle build
-  ```
+    ```
+    gradle build
+    ```
 
-  Compiled file can be found in build dir
+    Compiled file can be found in build dir
   
-  To remove compiled classes and jar file
+    To remove compiled classes and jar file
 
-  ```
-  gradle clean
-  ```
+    ```
+    gradle clean
+    ```
 
 
 ## What is the software license?
@@ -165,12 +169,11 @@ This project is considered a community work. The development crew consist of YOU
 
 ## How can I contribute?
 
-There are a lot of [issues][issues] you can solve.
-If you are here for the first time, you can look at [`first-timers-only` issues][first-timers-issues].
+There are a lot of [issues][issues] you can solve. If you are here for the first time, you can look at [first-timers-only][first-timers-issues] issues.
 They are either
 
 - easy to do and introduce you to github and git
-- or descripe clearly how to solve the problem, so you have smoother start.
+- or describe clearly how to solve the problem, so you have smoother start.
 
 If you want to solve an issue, please comment in it that you would like to solve it.
 In any case, if you run into problems, please report them in the issue.

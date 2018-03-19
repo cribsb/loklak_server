@@ -18,15 +18,14 @@
  */
 package org.loklak.api.iot;
 
-import org.eclipse.jetty.util.log.Log;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.loklak.data.DAO;
 import org.loklak.http.RemoteAccess;
+import org.loklak.objects.BasicTimeline.Order;
 import org.loklak.objects.ImportProfileEntry;
 import org.loklak.objects.SourceType;
-import org.loklak.objects.Timeline;
 import org.loklak.server.Query;
 
 import javax.servlet.ServletException;
@@ -118,7 +117,7 @@ public class ImportProfileServlet extends HttpServlet {
             success = DAO.writeImportProfile(importProfileEntry, true);
         } catch (IOException | NullPointerException e) {
             response.sendError(400, "submitted data is invalid : " + e.getMessage());
-            Log.getLog().warn(e);
+            DAO.severe(e);
             return;
         }
 
@@ -211,7 +210,7 @@ public class ImportProfileServlet extends HttpServlet {
                 for (String msgId : entry.getImported()) {
                     query += "id:" + msgId + " ";
                 }
-                DAO.SearchLocalMessages search = new DAO.SearchLocalMessages(query, Timeline.Order.CREATED_AT, 0, 1000, 0);
+                DAO.SearchLocalMessages search = new DAO.SearchLocalMessages(query, Order.CREATED_AT, 0, 1000, 0);
                 entry_to_map.put("imported", search.timeline.toJSON(false, "search_metadata", "statuses").get("statuses"));
             }
             entries_to_map.put(entry_to_map);

@@ -29,11 +29,11 @@ import org.joda.time.format.DateTimeFormatter;
 import org.joda.time.format.ISODateTimeFormat;
 import org.json.JSONArray;
 import org.json.JSONException;
-import org.json.JSONObject;
+import org.loklak.harvester.Post;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 
-public abstract class AbstractObjectEntry implements ObjectEntry {
+public abstract class AbstractObjectEntry extends Post implements ObjectEntry {
 
     public  final static String TIMESTAMP_FIELDNAME = "timestamp";
     public  final static String CREATED_AT_FIELDNAME = "created_at";
@@ -42,11 +42,11 @@ public abstract class AbstractObjectEntry implements ObjectEntry {
     }
     
     public String toString() {
-        return this.toJSON().toString();
+        return super.toString();
     }
 
     public byte[] toJSONBytes() {
-        String s = toString();
+        String s = this.toString();
         return s == null ? null : s.getBytes(StandardCharsets.UTF_8);
     }
     
@@ -144,12 +144,4 @@ public abstract class AbstractObjectEntry implements ObjectEntry {
         return a;
     }
 
-    public Object lazyGet(JSONObject json, String key) {
-        try {
-            Object o = json.get(key);
-            return o;
-        } catch (JSONException e) {
-            return null;
-        }
-    }
 }

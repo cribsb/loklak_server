@@ -30,7 +30,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import org.eclipse.jetty.util.log.Log;
 import org.json.JSONObject;
 import org.loklak.data.DAO;
 
@@ -127,9 +126,9 @@ public class JsonDataset {
                                 }
                             }
                         } catch (InterruptedException e) {
-                        	Log.getLog().warn(e);
+                        	DAO.severe(e);
                         } catch (IOException e) {
-                        	Log.getLog().warn(e);
+                        	DAO.severe(e);
                         }
                     }
                 };
@@ -149,7 +148,7 @@ public class JsonDataset {
      * @throws IOException
      */
     public JsonFactory putUnique(JSONObject obj) throws IOException {
-        JsonFactory json = indexDump.write(obj, 'I');
+        JsonFactory json = indexDump.write(obj, 'I', true);
         for (Map.Entry<String, Boolean> column: this.columns.entrySet()) {
             //for (Map.Entry<String, JsonFactoryIndex> idxo: this.index.entrySet()) {
             String searchKey = column.getKey();

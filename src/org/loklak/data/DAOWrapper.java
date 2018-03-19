@@ -5,7 +5,7 @@ package org.loklak.data;
  */
 
 
-import org.loklak.objects.MessageEntry;
+import org.loklak.harvester.TwitterScraper.TwitterTweet;
 import org.loklak.objects.QueryEntry;
 import org.loklak.objects.SourceType;
 import org.loklak.objects.UserEntry;
@@ -14,7 +14,26 @@ import java.net.MalformedURLException;
 import java.util.*;
 
 /**
- * The json below is the minimum json
+ * Allow other scraper to insert data into Elasticsearch main entry.
+ *
+ * To way to use this wrapper:
+ *
+ *
+ * Way 1:
+ Use GenericJSONBuilder by calling DAOWrapper.builder(),
+ and use the builder to insert data, finally call builder.persist()
+
+
+ Way 2:
+ Implement the interface Insertable,
+ and pass it intoDAOWrapper.insert(Insertable msg).
+ On the lower-level, insert(Insertable msg) static method will create a builder and persist them.
+ *
+ *
+ * Before taking any action, pleaste take a look at the minimal json and getting know about the data structure in Elasticsearch
+ *
+ * The json below is the minimum json that can be inserted into DAO
+ *
  * {
  "statuses": [
  {
@@ -170,7 +189,7 @@ public class DAOWrapper {
         public void persist(){
             try{
                 //building message entry
-                MessageEntry message = new MessageEntry();
+                TwitterTweet message = new TwitterTweet();
 
                 /**
                  * Use hash of text if id of message is not set
@@ -178,7 +197,7 @@ public class DAOWrapper {
                 if(id_str == null)
                     id_str = String.valueOf(text.hashCode());
 
-                message.setIdStr(id_str);
+                message.setPostId(id_str);
 
                 /**
                  * Get current time if not set
@@ -235,5 +254,6 @@ public class DAOWrapper {
          * Insert the fields
          */
         msg.getExtraField().forEach(entry -> bd.addField(entry.getKey(), entry.getValue()));
+        bd.persist();
     }
 }

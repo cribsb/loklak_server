@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-import org.eclipse.jetty.util.log.Log;
 import org.json.JSONObject;
 import org.loklak.data.DAO;
 import org.loklak.tools.DateParser;
@@ -93,7 +92,7 @@ public class AccessTracker extends Thread {
                         while (this.finishedQueue.size() > MAX_FINISHED) this.finishedQueue.remove(this.finishedQueue.firstKey());
                         continue timeoutcheck;
                     } catch (IOException e) {
-                    	Log.getLog().warn(e);
+                    	DAO.severe(e);
                         break monitor;
                     }
                 }
@@ -105,13 +104,13 @@ public class AccessTracker extends Thread {
         try {
             for (Track track: this.pendingQueue.values()) writeToHistory(track, COMMENT_CLOSED);
         } catch (IOException e) {
-        	Log.getLog().warn(e);
+        	DAO.severe(e);
         }
     }
     
     private void writeToHistory(Track track, String comment) throws IOException {
         if (comment != null) track.put(COMMENT_KEY, comment);
-        this.history.write(track);
+        this.history.write(track, true);
     }
     
     public void close() {
@@ -123,7 +122,7 @@ public class AccessTracker extends Thread {
         try {
             for (Track track: this.pendingQueue.values()) writeToHistory(track, COMMENT_CLOSED);
         } catch (IOException e) {
-        	Log.getLog().warn(e);
+        	DAO.severe(e);
         }
     }
     

@@ -6,12 +6,12 @@
  *  modify it under the terms of the GNU Lesser General Public
  *  License as published by the Free Software Foundation; either
  *  version 2.1 of the License, or (at your option) any later version.
- *  
+ *
  *  This library is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  Lesser General Public License for more details.
- *  
+ *
  *  You should have received a copy of the GNU Lesser General Public License
  *  along with this program in the file lgpl21.txt
  *  If not, see <http://www.gnu.org/licenses/>.
@@ -51,7 +51,7 @@ import org.loklak.tools.UTF8;
 
 /*
  * - test suggestions -
- * 
+ *
  * most common queries
  * http://localhost:9000/api/suggest.json?q=beer&orderby=query_count&order=desc
  *
@@ -60,11 +60,12 @@ import org.loklak.tools.UTF8;
  */
 
 public class SuggestServlet extends HttpServlet {
-   
+
     private static final long serialVersionUID = 8578478303032749879L;
+    public static Map<Integer, JSONObject> cache = new ConcurrentHashMap<>();
 
     public static ResultList<QueryEntry> suggest(
-            final String protocolhostportstub,
+            final String[] protocolhostportstubs,
             final String q,
             final String source,
             final int count,
@@ -79,22 +80,32 @@ public class SuggestServlet extends HttpServlet {
         int httpsport = (int) DAO.getConfig("port.https", 9443);
         String peername = (String) DAO.getConfig("peername", "anonymous");
         ResultList<QueryEntry>  rl = new ResultList<QueryEntry>();
-        String urlstring = "";
-        urlstring = protocolhostportstub + "/api/suggest.json?q=" + URLEncoder.encode(q.replace(' ', '+'), "UTF-8") +
-                "&timezoneOffset=" + timezoneOffset +
-                "&count=" + count +
-                "&source=" + (source == null ? "all" : source) +
-                (order == null ? "" : ("&order=" + order)) +
-                (orderby == null ? "" : ("&orderby=" + orderby)) +
-                (since == null ? "" : ("&since=" + since)) +
-                (until == null ? "" : ("&until=" + until)) +
-                (selectby == null ? "" : ("&selectby=" + selectby)) +
-                (random < 0 ? "" : ("&random=" + random)) +
-                "&minified=true" +
-                "&port.http=" + httpport +
-                "&port.https=" + httpsport +
-                "&peername=" + peername;
-        byte[] response = ClientConnection.downloadPeer(urlstring);
+        byte[] response = null;
+        IOException ee = null;
+        backendloop: for (String protocolhostportstub: protocolhostportstubs) {
+            try {
+                ee = null;
+                String urlstring = protocolhostportstub + "/api/suggest.json?q=" + URLEncoder.encode(q.replace(' ', '+'), "UTF-8") +
+                        "&timezoneOffset=" + timezoneOffset +
+                        "&count=" + count +
+                        "&source=" + (source == null ? "all" : source) +
+                        (order == null ? "" : ("&order=" + order)) +
+                        (orderby == null ? "" : ("&orderby=" + orderby)) +
+                        (since == null ? "" : ("&since=" + since)) +
+                        (until == null ? "" : ("&until=" + until)) +
+                        (selectby == null ? "" : ("&selectby=" + selectby)) +
+                        (random < 0 ? "" : ("&random=" + random)) +
+                        "&minified=true" +
+                        "&port.http=" + httpport +
+                        "&port.https=" + httpsport +
+                        "&peername=" + peername;
+                response = ClientConnection.download(urlstring);
+                break backendloop;
+            } catch (IOException e) {
+                ee = e;
+            }
+        }
+        if (response == null && ee != null) throw ee;
         if (response == null || response.length == 0) return rl;
         String responseString = UTF8.String(response);
         if (responseString == null || responseString.length() == 0 || responseString.startsWith("<")) {
@@ -110,7 +121,7 @@ public class SuggestServlet extends HttpServlet {
                 rl.add(qe);
             }
         }
-        
+
         Object metadata_obj = json.get("search_metadata");
         if (metadata_obj != null && metadata_obj instanceof Map<?,?>) {
             Integer hits = (Integer) ((JSONObject) metadata_obj).get("hits");
@@ -118,25 +129,23 @@ public class SuggestServlet extends HttpServlet {
         }
         return rl;
     }
-    
-    public static Map<Integer, JSONObject> cache = new ConcurrentHashMap<>();
-    
+
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         doGet(request, response);
     }
-    
+
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         Query post = RemoteAccess.evaluate(request);
-     
+
         // manage DoS
         if (post.isDoS_blackout()) {response.sendError(503, "your request frequency is too high"); return;}
 
         String callback = post.get("callback", "");
         boolean jsonp = callback != null && callback.length() > 0;
         boolean minified = post.get("minified", false);
-        
+
         int requestkey = post.hashCode();
         JSONObject m = post.isDoS_servicereduction() ? cache.get(requestkey) : null;
         if (m == null) {
@@ -153,13 +162,13 @@ public class SuggestServlet extends HttpServlet {
             Date until = post.get("until",  "").equals("now") ? new Date() : post.get("until", (Date) null, timezoneOffset);
             String selectby = post.get("selectby", "retrieval_next");
             ResultList<QueryEntry> queryList = new ResultList<>();
-    
-            if ((source.equals("all") || source.equals("query")) && query.length() >= 0) {
+
+            if (("all".equals(source) || "query".equals(source)) && query.length() >= 0) {
                 long start = System.currentTimeMillis();
                 queryList = DAO.SearchLocalQueries(query, count, orderby, "long", order, since, until, selectby);
                 post.recordEvent("localqueries_time", System.currentTimeMillis() - start);
             }
-            
+
             if (delete && local && queryList.size() > 0) {
                 long start = System.currentTimeMillis();
                 for (QueryEntry qe: queryList) DAO.deleteQuery(qe.getQuery(), qe.getSourceType());
@@ -167,8 +176,8 @@ public class SuggestServlet extends HttpServlet {
                 queryList = DAO.SearchLocalQueries(query, count, orderby, "long", order, since, until, selectby);
                 post.recordEvent("localquerydelete_time", System.currentTimeMillis() - start);
             }
-            
-            if (source.equals("all") || source.equals("geo")) {
+
+            if ("all".equals(source) || "geo".equals(source)) {
                 long start = System.currentTimeMillis();
                 LinkedHashSet<String> suggestions = DAO.geoNames.suggest(query, count, 0);
                 if (suggestions.size() < count && query.length() > 2) suggestions.addAll(DAO.geoNames.suggest(query, count, 1));
@@ -180,7 +189,7 @@ public class SuggestServlet extends HttpServlet {
                 post.recordEvent("suggestionsquery_time", System.currentTimeMillis() - start);
             }
 
-            long start = System.currentTimeMillis();        
+            long start = System.currentTimeMillis();
             post.setResponse(response, "application/javascript");
 
             List<Object> queries = new ArrayList<>();
@@ -198,7 +207,7 @@ public class SuggestServlet extends HttpServlet {
                 }
                 queries = random_queries;
             }
-            
+
             // generate json
             m = new JSONObject(true);
             JSONObject metadata = new JSONObject(true);
@@ -212,11 +221,11 @@ public class SuggestServlet extends HttpServlet {
             if (since != null || until != null) metadata.put("selectby", selectby);
             metadata.put("client", post.getClientHost());
             m.put("search_metadata", metadata);
-            
+
             m.put("queries", queries);
             post.recordEvent("postprocessing_time", System.currentTimeMillis() - start);
         }
-        
+
         // write json
         response.setCharacterEncoding("UTF-8");
         PrintWriter sos = response.getWriter();
@@ -229,7 +238,7 @@ public class SuggestServlet extends HttpServlet {
 
     public static void main(String[] args) {
         try {
-            ResultList<QueryEntry> rl = suggest("http://loklak.org", "","query",1000,"asc","retrieval_next",DateParser.getTimezoneOffset(),null,"now","retrieval_next",3);
+            ResultList<QueryEntry> rl = suggest(new String[]{"http://root.loklak.org"}, "","query",1000,"asc","retrieval_next",DateParser.getTimezoneOffset(),null,"now","retrieval_next",3);
             for (QueryEntry qe: rl) {
                 System.out.println(UTF8.String(qe.toJSONBytes()));
             }
@@ -237,7 +246,7 @@ public class SuggestServlet extends HttpServlet {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        
+
     }
-    
+
 }

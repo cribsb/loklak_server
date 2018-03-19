@@ -1,14 +1,13 @@
 package org.loklak.api.iot;
 
-import org.eclipse.jetty.util.log.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.loklak.data.DAO;
 import org.loklak.harvester.HarvestingFrequency;
+import org.loklak.harvester.TwitterScraper.TwitterTweet;
+import org.loklak.objects.BasicTimeline.Order;
 import org.loklak.objects.ImportProfileEntry;
-import org.loklak.objects.MessageEntry;
 import org.loklak.objects.SourceType;
-import org.loklak.objects.Timeline;
 import org.loklak.objects.UserEntry;
 import org.loklak.server.Query;
 
@@ -37,7 +36,7 @@ public class PushServletHelper {
             message.put("screen_name", screenName);
             JSONObject user = (JSONObject) message.remove("user");
             if (user != null) user.put("screen_name", screenName);
-            MessageEntry messageEntry = new MessageEntry(message);
+            TwitterTweet messageEntry = new TwitterTweet(message);
             UserEntry userEntry = new UserEntry(user != null ? user : new JSONObject());
             boolean successful;
             report.incrementRecordCount();
@@ -45,7 +44,7 @@ public class PushServletHelper {
                 DAO.MessageWrapper mw = new DAO.MessageWrapper(messageEntry, userEntry, true);
                 successful = DAO.writeMessage(mw);
             } catch (Exception e) {
-            	Log.getLog().warn(e);
+            	DAO.severe(e);
                 report.incrementErrorCount();
                 continue;
             }
@@ -86,7 +85,7 @@ public class PushServletHelper {
             try {
                 profile.put("harvesting_freq", HarvestingFrequency.valueOf(Integer.parseInt(harvesting_freq)).getFrequency());
             } catch (IllegalArgumentException e) {
-            	Log.getLog().warn(e);
+            	DAO.severe(e);
                 throw new IOException("Unsupported 'harvesting_freq' parameter value : " + harvesting_freq);
             }
         } else {
@@ -98,7 +97,7 @@ public class PushServletHelper {
             try {
                 lifetime = Long.parseLong(lifetime_str);
             } catch (NumberFormatException e) {
-            	Log.getLog().warn(e);
+            	DAO.severe(e);
                 throw new IOException("Invalid lifetime parameter (must be an integer) : " + lifetime_str);
             }
             profile.put("lifetime", lifetime);
@@ -120,12 +119,12 @@ public class PushServletHelper {
         try {
             importProfileEntry = new ImportProfileEntry(profile);
         } catch (Exception e) {
-        	Log.getLog().warn(e);
+        	DAO.severe(e);
             throw new IOException("Unable to create import profile : " + e.getMessage());
         }
         boolean success = DAO.writeImportProfile(importProfileEntry, true);
         if (!success) {
-            Log.getLog().warn("Error saving import profile from " + post.getClientHost());
+            DAO.severe("Error saving import profile from " + post.getClientHost());
             throw new IOException("Unable to save import profile : " + importProfileEntry);
         }
         return importProfileEntry;
@@ -169,12 +168,12 @@ public class PushServletHelper {
         Double longitude = (Double) location_point.get(1);
         String query = "/source_type=" + source_type + " /location=" + latitude + "," + longitude;
         // search only latest message
-        DAO.SearchLocalMessages search = new DAO.SearchLocalMessages(query, Timeline.Order.CREATED_AT, 0, 1, 0);
-        Iterator<MessageEntry> it = search.timeline.iterator();
+        DAO.SearchLocalMessages search = new DAO.SearchLocalMessages(query, Order.CREATED_AT, 0, 1, 0);
+        Iterator<TwitterTweet> it = search.timeline.iterator();
         while (it.hasNext()) {
-            MessageEntry messageEntry = it.next();
+            TwitterTweet messageEntry = it.next();
             if (compareMessage(messageEntry.toJSON(), message)) {
-                return messageEntry.getIdStr();
+                return messageEntry.getPostId();
             }
         }
         return null;

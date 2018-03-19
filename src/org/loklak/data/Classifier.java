@@ -6,12 +6,12 @@
  *  modify it under the terms of the GNU Lesser General Public
  *  License as published by the Free Software Foundation; either
  *  version 2.1 of the License, or (at your option) any later version.
- *  
+ *
  *  This library is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; wo even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  Lesser General Public License for more details.
- *  
+ *
  *  You should have received a copy of the GNU Lesser General Public License
  *  along with this program in the file lgpl21.txt
  *  If not, see <http://www.gnu.org/licenses/>.
@@ -27,15 +27,16 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-import org.loklak.objects.MessageEntry;
-import org.loklak.objects.Timeline;
+import org.loklak.harvester.TwitterScraper.TwitterTweet;
+import org.loklak.objects.BasicTimeline.Order;
+import org.loklak.objects.TwitterTimeline;
 import org.loklak.tools.bayes.BayesClassifier;
 import org.loklak.tools.bayes.Classification;
 
 public class Classifier {
-    
+
     private final static Category NEGATIVE_FEATURE = Category.NONE;
-    
+
     public enum Category {
         joy,trust,fear,surprise,sadness,disgust,anger,anticipation,
         swear,sex,leet,troll,
@@ -45,13 +46,13 @@ public class Classifier {
 
     public final static Pattern NON_WORD_PATTERN = Pattern.compile("\\W");
     public final static Pattern WHITESPACE_PATTERN = Pattern.compile("\\s");
-    
+
     public enum Context {
-        
+
         emotion(new Category[]{Category.joy,Category.trust,Category.fear,Category.surprise,Category.sadness,Category.disgust,Category.anger,Category.anticipation}),
         profanity(new Category[]{Category.swear,Category.sex,Category.leet,Category.troll}),
         language(new Category[]{Category.english, Category.german, Category.french, Category.spanish, Category.dutch});
-        
+
         public Map<Category, Set<String>> categories;
         BayesClassifier<String, Category> bayes;
         private Context(Category... categories) {
@@ -123,12 +124,25 @@ public class Classifier {
             return tokens;
         }
     }
-    
+
+    public static List<String> normalize(String phrase) {
+        if (phrase == null) phrase = "";
+
+        String cleanphrase = NON_WORD_PATTERN.matcher(phrase.toLowerCase()).replaceAll(" ");
+        String[] rawtokens = WHITESPACE_PATTERN.split(cleanphrase, 0);
+        List<String> tokens = new ArrayList<>();
+        for (String token: rawtokens) if (token.length() > 2) tokens.add(token);
+        return tokens;
+    }
+
+
     public static synchronized void learnPhrase(String message) {
         for (Context c: Context.values()) c.learnPhrase(message);
     }
-    
+
     public static Map<Context, Classification<String, Category>> classify(String phrase) {
+        if (phrase == null) phrase = "";
+
         Map<Context, Classification<String, Category>> map = new HashMap<>();
         for (Context c: Context.values()) {
             Classification<String, Category> classification = c.classify(phrase);
@@ -138,9 +152,9 @@ public class Classifier {
         }
         return map;
     }
-    
+
     public static void init(int maxsize, int initsize) {
-        
+
         // load the context keys
         DAO.log("Classifier: initializing " + Context.values().length + " contexts...");
         for (Context c: Context.values()) {
@@ -157,17 +171,17 @@ public class Classifier {
             }
         }
          */
-        
+
         // load a test set
         if (DAO.countLocalMessages(-1, true) > 0) {
             DAO.log("Classifier: loading test set for " + initsize + " messages...");
-            DAO.SearchLocalMessages testset = new DAO.SearchLocalMessages("", Timeline.Order.CREATED_AT, 0, initsize, 0);
-            Timeline tl = testset.timeline;
+            DAO.SearchLocalMessages testset = new DAO.SearchLocalMessages("", Order.CREATED_AT, 0, initsize, 0);
+            TwitterTimeline tl = testset.timeline;
             DAO.log("Classifier: awaiting " + tl.size() * Context.values().length + " learn steps...");
             int count = 0;
             for (Context c: Context.values()) {
                 //Set<String> voc = c.vocabulary();
-                for (MessageEntry m: tl) {
+                for (TwitterTweet m: tl) {
                     c.learnPhrase(m.getText());
                     count++;
                     if (count % 100 == 0) DAO.log("Classifier: performed " + count + " learn steps");
@@ -175,7 +189,7 @@ public class Classifier {
             }
         }
         /*
-        for (MessageEntry m: tl) {
+        for (TwitterTweet m: tl) {
             System.out.println(m.getText());
             System.out.print("  -> ");
             Map<Context, Classification<String, Category>> classification = classify(m.getText());
@@ -186,5 +200,5 @@ public class Classifier {
         }
         */
     }
-    
+
 }
